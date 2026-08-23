@@ -2,7 +2,7 @@
   "plugins": [
     {
       "name": "dsh-oil-creator",
-      "enabled": true,
+      "enabled": false,
       "source": "dsh-native"
     }
   ]

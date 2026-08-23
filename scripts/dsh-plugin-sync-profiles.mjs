@@ -111,7 +111,7 @@ function syncDshHome({ dshHome, linkPackages }) {
   });
   changed += 1;
 
-  writeFileSync(profilePatchPath, webProfilePatch(baseWebPatch, runtimePluginNames));
+  writeFileSync(profilePatchPath, webProfilePatch(baseWebPatch, runtimePluginNames, enabledPluginNames));
   changed += 1;
 
   if (linkPackages) {
@@ -154,8 +154,12 @@ function writeJson(filePath, value) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function webProfilePatch(basePatch, managedPluginNames) {
-  return `${stripManagedPluginPatchRows(basePatch, managedPluginNames).trimEnd()}\n`;
+function webProfilePatch(basePatch, managedPluginNames, enabledPluginNames) {
+  let patch = stripPatchRowsById(basePatch, managedPluginNames);
+  if (enabledPluginNames.length === 0) {
+    patch = stripPatchRowsById(patch, ['ui-sidebar']);
+  }
+  return normalizePatchList(patch);
 }
 
 function uniqueStrings(values) {
@@ -169,12 +173,12 @@ function uniqueStrings(values) {
   return result;
 }
 
-function stripManagedPluginPatchRows(patch, managedPluginNames) {
-  if (managedPluginNames.length === 0) {
+function stripPatchRowsById(patch, ids) {
+  if (ids.length === 0) {
     return patch;
   }
 
-  const managedPlugins = new Set(managedPluginNames);
+  const idsToStrip = new Set(ids);
   const lines = patch.split(/\r?\n/);
   const blocks = [];
   let currentBlock = [];
@@ -193,17 +197,21 @@ function stripManagedPluginPatchRows(patch, managedPluginNames) {
   }
 
   return blocks
-    .filter((block) => !isManagedPluginPatchRow(block, managedPlugins))
+    .filter((block) => !hasPatchRowId(block, idsToStrip))
     .map((block) => block.join('\n').trimEnd())
     .join('\n');
 }
 
-function isManagedPluginPatchRow(block, managedPlugins) {
+function normalizePatchList(patch) {
+  return patch.trim().includes('- ') ? `${patch.trimEnd()}\n` : '[]\n';
+}
+
+function hasPatchRowId(block, ids) {
   for (const line of block) {
-    const match = line.match(/^\s{2}(?:id|name):\s*(.+?)\s*$/);
+    const match = line.match(/^\s*(?:-\s*)?(?:id|name):\s*(.+?)\s*$/);
     if (!match) continue;
     const value = unquoteYamlScalar(match[1]);
-    if (managedPlugins.has(value)) {
+    if (ids.has(value)) {
       return true;
     }
   }

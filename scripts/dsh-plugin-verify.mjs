@@ -66,6 +66,7 @@ await check('Level 3 Web profile follows plugin manifest', () => {
   const runtimeManifest = JSON.parse(readFileSync(anchors.runtimePluginsManifest, 'utf8'));
   const plugins = Array.isArray(runtimeManifest?.plugins) ? runtimeManifest.plugins : [];
   const enabled = plugins.some((plugin) => plugin?.name === packageName && plugin.enabled === true);
+  const hasEnabledRuntimePlugin = plugins.some((plugin) => plugin?.enabled === true);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   const bundles = manifest?.dsh?.profile?.bundles;
   if (enabled && (!Array.isArray(bundles) || !bundles.includes(packageName))) {
@@ -76,8 +77,19 @@ await check('Level 3 Web profile follows plugin manifest', () => {
   }
   if (existsSync(patchPath)) {
     const patch = readFileSync(patchPath, 'utf8');
+    const patchBody = patch
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'))
+      .join('\n');
+    if (patchBody !== '[]' && !patchBody.startsWith('- ')) {
+      throw new Error(`${path.relative(repoRoot, patchPath)} must be a top-level YAML array; use [] when there are no patch rows`);
+    }
     if (patch.includes(packageName)) {
       throw new Error(`${path.relative(repoRoot, patchPath)} should not configure ${packageName}; DSH profile bundles load plugins and duplicate patch rows fail packaged startup`);
+    }
+    if (!hasEnabledRuntimePlugin && patch.includes('ui-sidebar')) {
+      throw new Error(`${path.relative(repoRoot, patchPath)} disables ui-sidebar while no runtime plugins are enabled; DSH Web needs its base sidebar in this state`);
     }
   }
   return `${path.relative(repoRoot, manifestPath)}${existsSync(patchPath) ? `, ${path.relative(repoRoot, patchPath)}` : ''}`;

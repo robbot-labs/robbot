@@ -288,7 +288,8 @@ function linkNodeModules(linkPath: string, targetPath: string, label: string): v
 }
 
 function linkRuntimePluginPackages(modulesDir: string, pluginNodeModules: string, runtimePluginsManifestPath: string): void {
-  const packageNames = runtimePluginPackageNames(runtimePluginsManifestPath);
+  const runtimePluginsRoot = path.dirname(runtimePluginsManifestPath);
+  const packageNames = runtimePluginPackageNames(runtimePluginsManifestPath, path.join(runtimePluginsRoot, 'manifest.json'));
   mkdirSync(modulesDir, { recursive: true });
   for (const packageName of packageNames) {
     const targetPath = path.join(pluginNodeModules, packageName);
@@ -303,23 +304,41 @@ function linkRuntimePluginPackages(modulesDir: string, pluginNodeModules: string
   }
 }
 
-function runtimePluginPackageNames(manifestPath: string): string[] {
+function runtimePluginPackageNames(packageManifestPath: string, runtimePluginsManifestPath?: string): string[] {
+  const names = new Set<string>();
   try {
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    const manifest = JSON.parse(readFileSync(packageManifestPath, 'utf8')) as {
+      name?: unknown;
       dependencies?: Record<string, unknown>;
       optionalDependencies?: Record<string, unknown>;
     };
-    return [
-      ...Object.keys(manifest.dependencies ?? {}),
-      ...Object.keys(manifest.optionalDependencies ?? {}),
-    ];
+    if (manifest.name === 'robbot-runtime-plugins') {
+      for (const packageName of [
+        ...Object.keys(manifest.dependencies ?? {}),
+        ...Object.keys(manifest.optionalDependencies ?? {}),
+      ]) {
+        names.add(packageName);
+      }
+    }
   } catch (error) {
-    console.warn('[robbot:dsh-process] failed to read runtime plugin manifest', {
-      manifestPath,
+    console.warn('[robbot:dsh-process] failed to read runtime plugin package manifest', {
+      manifestPath: packageManifestPath,
       error: error instanceof Error ? error.message : String(error),
     });
-    return [];
   }
+
+  if (runtimePluginsManifestPath) {
+    for (const packageName of declaredRuntimePluginPackageNames(runtimePluginsManifestPath)) {
+      names.add(packageName);
+    }
+  }
+
+  return [...names];
+}
+
+function declaredRuntimePluginPackageNames(runtimePluginsManifestPath: string): string[] {
+  return runtimePlugins(runtimePluginsManifestPath)
+    .map((plugin) => plugin.name);
 }
 
 function enabledRuntimePluginPackageNames(runtimePluginsManifestPath: string): string[] {
@@ -327,15 +346,20 @@ function enabledRuntimePluginPackageNames(runtimePluginsManifestPath: string): s
 }
 
 function enabledRuntimePlugins(runtimePluginsManifestPath: string): Array<{ name: string; id: string; config: Record<string, unknown> }> {
+  return runtimePlugins(runtimePluginsManifestPath).filter((plugin) => plugin.enabled);
+}
+
+function runtimePlugins(runtimePluginsManifestPath: string): Array<{ name: string; id: string; enabled: boolean; config: Record<string, unknown> }> {
   try {
     const manifest = JSON.parse(readFileSync(runtimePluginsManifestPath, 'utf8')) as {
       plugins?: Array<{ name?: unknown; id?: unknown; enabled?: unknown; config?: unknown }>;
     };
     return (Array.isArray(manifest.plugins) ? manifest.plugins : [])
-      .filter((plugin) => plugin.enabled === true && typeof plugin.name === 'string')
+      .filter((plugin) => typeof plugin.name === 'string')
       .map((plugin) => ({
         name: plugin.name as string,
         id: typeof plugin.id === 'string' ? plugin.id : plugin.name as string,
+        enabled: plugin.enabled === true,
         config: plugin.config && typeof plugin.config === 'object' && !Array.isArray(plugin.config)
           ? plugin.config as Record<string, unknown>
           : {},
@@ -358,9 +382,16 @@ function webProfilePatch(
   const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
   const runtimePluginsRoot = pluginNodeModules ? path.resolve(pluginNodeModules, '..') : undefined;
   const managedPluginPackages = runtimePluginsRoot
-    ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'))
+    ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'), path.join(runtimePluginsRoot, 'manifest.json'))
     : [];
-  return `${stripManagedPluginPatchRows(basePatch, managedPluginPackages).trimEnd()}\n`;
+  const enabledPluginPackages = runtimePluginsRoot
+    ? enabledRuntimePluginPackageNames(path.join(runtimePluginsRoot, 'manifest.json'))
+    : [];
+  let patch = stripPatchRowsById(basePatch, managedPluginPackages);
+  if (enabledPluginPackages.length === 0) {
+    patch = stripPatchRowsById(patch, ['ui-sidebar']);
+  }
+  return normalizePatchList(patch);
 }
 
 function syncWebProfileBundles(dshRoot: string, dshHome: string, env: Record<string, string | undefined>): void {
@@ -371,7 +402,7 @@ function syncWebProfileBundles(dshRoot: string, dshHome: string, env: Record<str
   const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
   const runtimePluginsRoot = pluginNodeModules ? path.resolve(pluginNodeModules, '..') : undefined;
   const installedPluginPackages = runtimePluginsRoot
-    ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'))
+    ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'), path.join(runtimePluginsRoot, 'manifest.json'))
     : [];
   const enabledPluginPackages = runtimePluginsRoot
     ? enabledRuntimePluginPackageNames(path.join(runtimePluginsRoot, 'manifest.json'))
@@ -422,12 +453,12 @@ function uniqueStrings(values: string[]): string[] {
   return result;
 }
 
-function stripManagedPluginPatchRows(patch: string, managedPluginPackages: string[]): string {
-  if (managedPluginPackages.length === 0) {
+function stripPatchRowsById(patch: string, ids: string[]): string {
+  if (ids.length === 0) {
     return patch;
   }
 
-  const managedPlugins = new Set(managedPluginPackages);
+  const idsToStrip = new Set(ids);
   const lines = patch.split(/\r?\n/);
   const blocks: string[][] = [];
   let currentBlock: string[] = [];
@@ -446,19 +477,24 @@ function stripManagedPluginPatchRows(patch: string, managedPluginPackages: strin
   }
 
   return blocks
-    .filter((block) => !isManagedPluginPatchRow(block, managedPlugins))
+    .filter((block) => !hasPatchRowId(block, idsToStrip))
     .map((block) => block.join('\n').trimEnd())
     .join('\n');
 }
 
-function isManagedPluginPatchRow(block: string[], managedPlugins: Set<string>): boolean {
+function normalizePatchList(patch: string): string {
+  const trimmed = patch.trim();
+  return trimmed.includes('- ') ? `${patch.trimEnd()}\n` : '[]\n';
+}
+
+function hasPatchRowId(block: string[], ids: Set<string>): boolean {
   for (const line of block) {
-    const match = line.match(/^\s{2}(?:id|name):\s*(.+?)\s*$/);
+    const match = line.match(/^\s*(?:-\s*)?(?:id|name):\s*(.+?)\s*$/);
     if (!match) {
       continue;
     }
     const value = unquoteYamlScalar(match[1]);
-    if (managedPlugins.has(value)) {
+    if (ids.has(value)) {
       return true;
     }
   }

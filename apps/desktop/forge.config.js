@@ -397,10 +397,25 @@ function buildDshRuntimeBundle() {
 function isCurrentDshRuntimeBundle(runtimePath) {
   try {
     const marker = JSON.parse(fsSync.readFileSync(path.join(runtimePath, 'robbot-runtime.json'), 'utf8'));
-    return marker?.kind === 'robbot-dsh-runtime' && marker?.layoutVersion === 3;
+    return marker?.kind === 'robbot-dsh-runtime'
+      && marker?.layoutVersion === 3
+      && isCurrentRuntimePluginManifest(runtimePath);
   } catch {
     return false;
   }
+}
+
+function isCurrentRuntimePluginManifest(runtimePath) {
+  const repoRoot = path.resolve(__dirname, '../..');
+  const sourceManifestPath = path.join(repoRoot, 'runtime-plugins', 'manifest.json');
+  const runtimeManifestPath = path.join(runtimePath, 'manifest.json');
+  if (!fsSync.existsSync(sourceManifestPath)) {
+    return !fsSync.existsSync(runtimeManifestPath);
+  }
+  if (!fsSync.existsSync(runtimeManifestPath)) {
+    return false;
+  }
+  return fsSync.readFileSync(sourceManifestPath, 'utf8') === fsSync.readFileSync(runtimeManifestPath, 'utf8');
 }
 
 function prepareNodeRuntime() {
