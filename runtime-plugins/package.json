@@ -5,6 +5,7 @@
   "description": "Robbot-managed dependency layer for DSH native plugins.",
   "type": "module",
   "dependencies": {
-    "dsh-article-creator": "link:../vendor/dsh-article-creator"
+    "dsh-article-creator": "link:../vendor/dsh-article-creator",
+    "dsh-video-creator": "link:../vendor/dsh-video-creator"
   }
 }

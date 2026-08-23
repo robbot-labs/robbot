@@ -5,3 +5,6 @@
 [submodule "vendor/dsh-article-creator"]
 	path = vendor/dsh-article-creator
 	url = https://github.com/robbot-labs/dsh-article-creator.git
+[submodule "vendor/dsh-video-creator"]
+	path = vendor/dsh-video-creator
+	url = https://github.com/robbot-labs/dsh-video-creator.git

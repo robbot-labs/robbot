@@ -2,6 +2,11 @@
   "plugins": [
     {
       "name": "dsh-article-creator",
+      "enabled": false,
+      "source": "dsh-native"
+    },
+    {
+      "name": "dsh-video-creator",
       "enabled": true,
       "source": "dsh-native"
     }
