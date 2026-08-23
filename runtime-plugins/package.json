@@ -5,6 +5,6 @@
   "description": "Robbot-managed dependency layer for DSH native plugins.",
   "type": "module",
   "dependencies": {
-    "dsh-oil-creator": "link:../../dsh-plugs/dsh-oil-creator"
+    "dsh-article-creator": "link:../vendor/dsh-article-creator"
   }
 }

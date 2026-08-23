@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, '..');
@@ -85,15 +86,17 @@ function collectRuntimeEntryFiles(value, entries = new Set()) {
   return entries;
 }
 
-function entryFilesReferenceSrc(packageDir, manifest) {
-  const entries = new Set([
+function runtimeEntryFiles(manifest) {
+  return new Set([
     ...collectRuntimeEntryFiles(manifest.main),
     ...collectRuntimeEntryFiles(manifest.module),
     ...collectRuntimeEntryFiles(manifest.exports),
     ...collectRuntimeEntryFiles(manifest.bin),
   ]);
+}
 
-  for (const entry of entries) {
+function entryFilesReferenceSrc(packageDir, manifest) {
+  for (const entry of runtimeEntryFiles(manifest)) {
     if (entry.split('/').includes('src')) {
       return true;
     }
@@ -108,6 +111,91 @@ function entryFilesReferenceSrc(packageDir, manifest) {
   }
 
   return false;
+}
+
+function missingRuntimeEntryFiles(packageDir, manifest) {
+  return [...runtimeEntryFiles(manifest)]
+    .filter((entry) => entry !== './package.json' && entry !== 'package.json')
+    .filter((entry) => !fs.existsSync(path.join(packageDir, entry)));
+}
+
+function ensurePackageRuntimeBuilt(packageDir, manifest, packageName) {
+  const missingEntries = missingRuntimeEntryFiles(packageDir, manifest);
+  if (missingEntries.length === 0) {
+    return;
+  }
+  if (typeof manifest.scripts?.build !== 'string') {
+    return;
+  }
+
+  ensureBuildNodeModules(packageDir);
+  console.log(`[robbot:dsh-runtime] building ${packageName}; missing runtime entries: ${missingEntries.join(', ')}`);
+  const result = spawnSync('npm', ['run', 'build'], {
+    cwd: packageDir,
+    env: {
+      ...process.env,
+      PATH: [
+        path.join(packageDir, 'node_modules', '.bin'),
+        path.join(dshRoot, 'node_modules', '.bin'),
+        process.env.PATH,
+      ].filter(Boolean).join(path.delimiter),
+    },
+    stdio: 'inherit',
+  });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`npm run build failed for ${packageName} with exit ${String(result.status)}`);
+  }
+
+  const stillMissing = missingRuntimeEntryFiles(packageDir, manifest);
+  if (stillMissing.length > 0) {
+    throw new Error(`build for ${packageName} did not create runtime entries: ${stillMissing.join(', ')}`);
+  }
+}
+
+function ensureBuildNodeModules(packageDir) {
+  const nodeModulesPath = path.join(packageDir, 'node_modules');
+  const hoistedNodeModules = path.join(dshRoot, 'node_modules', '.pnpm', 'node_modules');
+  if (!fs.existsSync(hoistedNodeModules)) {
+    return;
+  }
+
+  if (fs.existsSync(nodeModulesPath)) {
+    const stat = fs.lstatSync(nodeModulesPath);
+    if (stat.isSymbolicLink()) {
+      fs.unlinkSync(nodeModulesPath);
+    } else if (!stat.isDirectory()) {
+      return;
+    }
+  }
+
+  fs.mkdirSync(nodeModulesPath, { recursive: true });
+  linkBuildDependency(nodeModulesPath, dshRoot, 'tsdown');
+  linkBuildDependency(nodeModulesPath, dshRoot, 'typescript');
+  const manifest = packageManifest(packageDir);
+  for (const packageName of Object.keys({
+    ...manifest.dependencies,
+    ...manifest.peerDependencies,
+  })) {
+    linkBuildDependency(nodeModulesPath, hoistedNodeModules, packageName);
+  }
+}
+
+function linkBuildDependency(nodeModulesPath, sourceNodeModulesPath, packageName) {
+  const sourcePath = path.join(sourceNodeModulesPath, ...packageParts(packageName));
+  if (!fs.existsSync(sourcePath)) {
+    return;
+  }
+
+  const linkPath = path.join(nodeModulesPath, ...packageParts(packageName));
+  if (fs.existsSync(linkPath)) {
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+  fs.symlinkSync(path.relative(path.dirname(linkPath), sourcePath), linkPath, 'dir');
 }
 
 function packageUsesSrcAtRuntime(packageDir, manifest) {
@@ -224,7 +312,7 @@ function copyPackageDirectory(sourcePath, targetPath, options = {}) {
   });
 }
 
-function materializePackage(packageName, seen = new Set()) {
+function materializePackage(packageName, seen = new Set(), options = {}) {
   if (seen.has(packageName)) {
     return;
   }
@@ -233,6 +321,9 @@ function materializePackage(packageName, seen = new Set()) {
   const sourcePath = resolvePackageDirectory(packageName);
   const targetPath = path.join(outputDir, 'node_modules', ...packageParts(packageName));
   const manifest = packageManifest(sourcePath);
+  if (options.buildMissingRuntimeEntries === true) {
+    ensurePackageRuntimeBuilt(sourcePath, manifest, packageName);
+  }
   copyPackageDirectory(sourcePath, targetPath, { keepSrc: packageUsesSrcAtRuntime(sourcePath, manifest) });
 
   const dependencies = {
@@ -285,7 +376,7 @@ function buildFlatRuntime() {
   }
 
   for (const packageName of runtimePluginPackageNames()) {
-    materializePackage(packageName, seen);
+    materializePackage(packageName, seen, { buildMissingRuntimeEntries: true });
   }
   console.log(`[robbot:dsh-runtime] materialized ${seen.size} packages into a flat runtime node_modules`);
 }

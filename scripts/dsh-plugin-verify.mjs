@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-const packageName = process.argv[2] ?? 'dsh-oil-creator';
 const repoRoot = process.cwd();
 
 const anchors = {
@@ -10,6 +9,7 @@ const anchors = {
   runtimePluginsManifest: path.join(repoRoot, 'runtime-plugins', 'manifest.json'),
   packagedRuntime: path.join(repoRoot, 'apps', 'desktop', '.runtime', 'dsh', 'package.json'),
 };
+const packageName = process.argv[2] ?? firstManifestPluginName(anchors.runtimePluginsManifest);
 
 let failed = false;
 
@@ -31,6 +31,20 @@ function resolveFrom(anchor) {
   return createRequire(anchor).resolve(packageName);
 }
 
+function firstManifestPluginName(manifestPath) {
+  if (!existsSync(manifestPath)) {
+    throw new Error(`missing ${path.relative(repoRoot, manifestPath)}; pass a plugin package name explicitly`);
+  }
+
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const plugins = Array.isArray(manifest?.plugins) ? manifest.plugins : [];
+  const firstPlugin = plugins.find((plugin) => typeof plugin?.name === 'string');
+  if (!firstPlugin?.name) {
+    throw new Error(`${path.relative(repoRoot, manifestPath)} does not declare any plugins; pass a plugin package name explicitly`);
+  }
+  return firstPlugin.name;
+}
+
 await check('Level 1 Resolve from runtime-plugins', () => path.relative(repoRoot, resolveFrom(anchors.runtimePlugins)));
 
 await check('Level 2 Load plugin module', async () => {
@@ -40,6 +54,27 @@ await check('Level 2 Load plugin module', async () => {
     throw new Error('module does not export apply() or a default plugin function');
   }
   return 'module exports a Cordis-style plugin entry';
+});
+
+await check('Level 2 Client bundle has no unmaterialized dynamic requires', () => {
+  const pluginDir = packageRootFromResolved(resolveFrom(anchors.runtimePlugins));
+  const manifest = JSON.parse(readFileSync(path.join(pluginDir, 'package.json'), 'utf8'));
+  const clientEntry = manifest?.exports?.['./client'] ?? manifest?.dsh?.bundle?.client ?? './lib/client.js';
+  if (typeof clientEntry !== 'string') {
+    return 'no client entry declared';
+  }
+  const clientPath = path.join(pluginDir, clientEntry);
+  if (!existsSync(clientPath)) {
+    throw new Error(`${path.relative(repoRoot, clientPath)} is missing; rebuild ${packageName}`);
+  }
+  const clientBundle = readFileSync(clientPath, 'utf8');
+  const dynamicRequires = [...clientBundle.matchAll(/\brequire\(["']([^"']+)["']\)/g)]
+    .map((match) => match[1])
+    .filter((moduleName) => !allowedClientExternal(moduleName));
+  if (dynamicRequires.length > 0) {
+    throw new Error(`${path.relative(repoRoot, clientPath)} leaks dynamic require(s): ${[...new Set(dynamicRequires)].join(', ')}`);
+  }
+  return path.relative(repoRoot, clientPath);
 });
 
 await check('Plugin manifest entry is declared', () => {
@@ -115,6 +150,51 @@ await check('Level 5 Package manifest is materialized', () => {
   }
   return path.relative(repoRoot, packagedManifestPath);
 });
+
+await check('Level 5 Packaged client bundle has no unmaterialized dynamic requires', () => {
+  if (!existsSync(anchors.packagedRuntime)) {
+    throw new Error('packaged runtime is missing; run the desktop DSH runtime build first');
+  }
+  const pluginDir = packageRootFromResolved(resolveFrom(anchors.packagedRuntime));
+  const manifest = JSON.parse(readFileSync(path.join(pluginDir, 'package.json'), 'utf8'));
+  const clientEntry = manifest?.exports?.['./client'] ?? manifest?.dsh?.bundle?.client ?? './lib/client.js';
+  if (typeof clientEntry !== 'string') {
+    return 'no client entry declared';
+  }
+  const clientPath = path.join(pluginDir, clientEntry);
+  if (!existsSync(clientPath)) {
+    throw new Error(`${path.relative(repoRoot, clientPath)} is missing; rebuild the desktop DSH runtime`);
+  }
+  const clientBundle = readFileSync(clientPath, 'utf8');
+  const dynamicRequires = [...clientBundle.matchAll(/\brequire\(["']([^"']+)["']\)/g)]
+    .map((match) => match[1])
+    .filter((moduleName) => !allowedClientExternal(moduleName));
+  if (dynamicRequires.length > 0) {
+    throw new Error(`${path.relative(repoRoot, clientPath)} leaks dynamic require(s): ${[...new Set(dynamicRequires)].join(', ')}`);
+  }
+  return path.relative(repoRoot, clientPath);
+});
+
+function allowedClientExternal(moduleName) {
+  return moduleName === 'react'
+    || moduleName === 'react/jsx-runtime'
+    || moduleName === 'react-dom'
+    || moduleName === 'react-dom/client'
+    || moduleName === '@deepseek-ai/cordis'
+    || moduleName.startsWith('@deepseek-ai/dsh-client-')
+    || moduleName.startsWith('@deepseek-ai/dsh-api-remotes');
+}
+
+function packageRootFromResolved(resolvedPath) {
+  let current = path.dirname(resolvedPath);
+  while (current !== path.dirname(current)) {
+    if (existsSync(path.join(current, 'package.json'))) {
+      return current;
+    }
+    current = path.dirname(current);
+  }
+  throw new Error(`unable to find package root for ${path.relative(repoRoot, resolvedPath)}`);
+}
 
 console.log('NEXT Level 4 Execute requires starting Robbot/DSH and invoking the plugin tool once.');
 

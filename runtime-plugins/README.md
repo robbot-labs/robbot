@@ -11,7 +11,7 @@ into the packaged runtime.
 Example:
 
 ```sh
-pnpm --dir runtime-plugins add dsh-oil-creator
+pnpm --dir runtime-plugins add dsh-article-creator@link:../vendor/dsh-article-creator
 pnpm dev
 ```
 
@@ -22,7 +22,7 @@ enables them in DSH Web:
 {
   "plugins": [
     {
-      "name": "dsh-oil-creator",
+      "name": "dsh-article-creator",
       "enabled": true,
       "source": "dsh-native"
     }

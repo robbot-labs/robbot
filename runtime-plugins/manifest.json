@@ -1,8 +1,8 @@
 {
   "plugins": [
     {
-      "name": "dsh-oil-creator",
-      "enabled": false,
+      "name": "dsh-article-creator",
+      "enabled": true,
       "source": "dsh-native"
     }
   ]

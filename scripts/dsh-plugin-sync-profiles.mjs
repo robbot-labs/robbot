@@ -13,7 +13,10 @@ const enabledPlugins = requestedPackageName === undefined
   ? readEnabledPlugins(runtimePluginsManifestPath)
   : [{ name: requestedPackageName, config: {} }];
 const enabledPluginNames = enabledPlugins.map((plugin) => plugin.name);
-const runtimePluginNames = runtimePluginPackageNames(runtimePluginsPackagePath);
+const runtimePluginNames = uniqueStrings([
+  ...runtimePluginPackageNames(runtimePluginsPackagePath),
+  ...readRuntimePlugins(runtimePluginsManifestPath).map((plugin) => plugin.name),
+]);
 const unmanagedEnabledPluginNames = enabledPluginNames.filter((pluginName) => !runtimePluginNames.includes(pluginName));
 const baseWebPatch = readFileSync(webPatchPath, 'utf8');
 
@@ -122,13 +125,18 @@ function syncDshHome({ dshHome, linkPackages }) {
 }
 
 function readEnabledPlugins(manifestPath) {
+  return readRuntimePlugins(manifestPath).filter((plugin) => plugin.enabled);
+}
+
+function readRuntimePlugins(manifestPath) {
   const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
   const plugins = Array.isArray(parsed?.plugins) ? parsed.plugins : [];
   return plugins
-    .filter((plugin) => plugin && typeof plugin === 'object' && plugin.enabled === true && typeof plugin.name === 'string')
+    .filter((plugin) => plugin && typeof plugin === 'object' && typeof plugin.name === 'string')
     .map((plugin) => ({
       name: plugin.name,
       id: typeof plugin.id === 'string' ? plugin.id : plugin.name,
+      enabled: plugin.enabled === true,
       config: plugin.config && typeof plugin.config === 'object' && !Array.isArray(plugin.config) ? plugin.config : {},
     }));
 }
