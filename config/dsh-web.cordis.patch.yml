@@ -1,0 +1,6 @@
+# Robbot-owned DSH Web profile patch. This is a profile patch, so new plugins
+# should be added as profile bundles. This layer only applies Robbot-owned
+# runtime overrides to rows inserted by those bundles.
+
+- id: ui-sidebar
+  disabled: true

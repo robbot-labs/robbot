@@ -1,4 +1,5 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ApprovalInput, CreateSessionInput, HarnessCapabilities, HarnessEvent, HarnessSession, RunInput } from '@robbot/core';
 import { HarnessError } from '@robbot/core';
@@ -139,7 +140,7 @@ export class WebTransport implements HarnessTransport {
 
   private async startServer(metadata: Record<string, unknown> | undefined, dshHome: string | undefined, fingerprint: string, version: number): Promise<void> {
     const runtime = this.runtimeManager.resolveRuntime();
-    await this.runtimeManager.start(this.processSessionId, 'web', {
+    const processHandle = await this.runtimeManager.start(this.processSessionId, 'web', {
       ROBBOT_DSH_WEB_PORT: String(this.port),
       DSH_HOME: dshHome ?? path.resolve(runtime.root, '../../.dsh-home'),
       ...runtimeEnv(metadata),
@@ -151,6 +152,13 @@ export class WebTransport implements HarnessTransport {
         const response = await fetch(`${base}/api/session.list`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'client-request', rpcId: randomUUID(), method: 'session.list', payload: {} }) });
         if (response.ok && version === this.startVersion) { this.started = true; this.runtimeFingerprint = fingerprint; return; }
       } catch { /* wait for webserver */ }
+      if (!processHandle.isRunning()) {
+        const stderr = processHandle.getRecentStderr();
+        throw new HarnessError(
+          stderr ? `DSH Desktop web host exited before becoming ready.\n${stderr}` : 'DSH Desktop web host exited before becoming ready.',
+          'transport_error',
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
     console.warn('[robbot:dsh-web] DSH web host did not become ready before timeout', {
@@ -249,7 +257,8 @@ function runtimeEnv(metadata?: Record<string, unknown>): Record<string, string |
 
 function runtimeFingerprint(metadata: Record<string, unknown> | undefined, dshHome: string | undefined): string {
   const ai = metadata?.aiRuntime as Record<string, unknown> | undefined;
-  if (typeof ai?.fingerprint === 'string') return ai.fingerprint;
+  const pluginFingerprint = runtimePluginsFingerprint();
+  if (typeof ai?.fingerprint === 'string') return `${ai.fingerprint}:${pluginFingerprint}`;
   return [
     typeof metadata?.accountHash === 'string' ? metadata.accountHash : '',
     typeof ai?.provider === 'string' ? ai.provider : '',
@@ -257,7 +266,29 @@ function runtimeFingerprint(metadata: Record<string, unknown> | undefined, dshHo
     typeof ai?.apiUrl === 'string' ? ai.apiUrl : '',
     typeof ai?.keyFingerprint === 'string' ? ai.keyFingerprint : '',
     dshHome ?? '',
+    pluginFingerprint,
   ].join(':');
+}
+
+function runtimePluginsFingerprint(): string {
+  const manifestPath = runtimePluginsManifestPath();
+  if (!manifestPath) {
+    return 'runtime-plugins:none';
+  }
+
+  try {
+    return `runtime-plugins:${createHash('sha256').update(readFileSync(manifestPath)).digest('hex').slice(0, 16)}`;
+  } catch {
+    return 'runtime-plugins:unreadable';
+  }
+}
+
+function runtimePluginsManifestPath(): string | undefined {
+  const candidates = [
+    path.resolve(process.cwd(), 'runtime-plugins', 'manifest.json'),
+    path.resolve(process.cwd(), '..', '..', 'runtime-plugins', 'manifest.json'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 function mapFrame(sessionId: string, frame: Frame, approvals: Map<string, { rpcId: string; approvalId: string }>): HarnessEvent | undefined {

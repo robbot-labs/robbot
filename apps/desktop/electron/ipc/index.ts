@@ -93,7 +93,10 @@ export function registerIpcHandlers(services: RuntimeServices): void {
     const currentAccountId = requireCurrentAccountId(services, accountId);
     const owner = BrowserWindow.fromWebContents(event.sender);
     const options: OpenDialogOptions = {
-      properties: ['openDirectory'],
+      title: '选择内容目录',
+      buttonLabel: '使用此目录',
+      message: '选择用于保存和管理内容素材、草稿与发布文件的目录',
+      properties: ['openDirectory', 'createDirectory'],
     };
     const result = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
 

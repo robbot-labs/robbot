@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { accessSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { HarnessError } from '@robbot/core';
@@ -12,6 +12,7 @@ export class DshProcess {
   private child?: ChildProcessWithoutNullStreams;
   private channel?: StdioChannel;
   private exited = false;
+  private recentStderr = '';
   constructor(
     private readonly cwd: string,
     private readonly protocol: DshProcessProtocol,
@@ -72,12 +73,14 @@ export class DshProcess {
     }
     const dshHome = (launchEnv as Record<string, string | undefined>).DSH_HOME;
     if (this.protocol === 'web' && dshHome) {
-      const patchPath = path.resolve(this.cwd, this.configPath);
+      syncWebProfileBundles(this.cwd, dshHome, launchEnv);
+      const patchPath = resolveConfigPath(this.cwd, this.configPath);
       const profilePatchPath = path.join(dshHome, 'profiles', 'web', 'cordis.patch.yml');
       mkdirSync(path.dirname(profilePatchPath), { recursive: true });
-      copyFileSync(patchPath, profilePatchPath);
+      writeFileSync(profilePatchPath, webProfilePatch(patchPath, this.cwd, launchEnv));
       console.info('[robbot:dsh-process] projected web profile patch', { profilePatchPath });
     }
+    ensureRuntimePluginResolution(this.cwd, this.configPath, launchEnv);
     console.info('[robbot:dsh-process] launch env summary', summarizeLaunchEnv(launchEnv));
 
     this.child = spawn(nodeExecutable, args, {
@@ -104,6 +107,7 @@ export class DshProcess {
 
     this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', (chunk: string) => {
+      this.recentStderr = `${this.recentStderr}${chunk}`.slice(-8_000);
       console.warn('[robbot:dsh-process:stderr]', chunk.trim());
     });
 
@@ -121,6 +125,10 @@ export class DshProcess {
     }
 
     return this.channel;
+  }
+
+  getRecentStderr(): string {
+    return this.recentStderr.trim();
   }
 
   async stop(): Promise<void> {
@@ -161,6 +169,325 @@ export class DshProcess {
     this.child = undefined;
     this.channel = undefined;
   }
+}
+
+function ensureRuntimePluginResolution(
+  dshRoot: string,
+  configPath: string,
+  env: Record<string, string | undefined>,
+): void {
+  const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
+  if (!pluginNodeModules) {
+    return;
+  }
+
+  const configNodeModules = path.join(path.dirname(resolveConfigPath(dshRoot, configPath)), 'node_modules');
+  linkNodeModules(configNodeModules, pluginNodeModules, 'config');
+
+  const dshHome = env.DSH_HOME;
+  if (dshHome) {
+    linkRuntimePluginPackages(
+      path.join(dshHome, 'profiles', 'node_modules'),
+      pluginNodeModules,
+      path.resolve(pluginNodeModules, '..', 'package.json'),
+    );
+  }
+}
+
+function resolveConfigPath(dshRoot: string, configPath: string): string {
+  if (path.isAbsolute(configPath) && existsSync(configPath)) {
+    return configPath;
+  }
+
+  const directPath = path.resolve(dshRoot, configPath);
+  if (existsSync(directPath)) {
+    return directPath;
+  }
+
+  const configName = path.basename(configPath);
+  for (const root of configSearchRoots(dshRoot)) {
+    const candidate = path.join(root, 'config', configName);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return directPath;
+}
+
+function configSearchRoots(dshRoot: string): string[] {
+  const roots: string[] = [];
+  for (const start of [dshRoot, process.cwd()]) {
+    let current = path.resolve(start);
+    while (!roots.includes(current)) {
+      roots.push(current);
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+      current = parent;
+    }
+  }
+  return roots;
+}
+
+function resolveRuntimePluginNodeModules(
+  dshRoot: string,
+  env: Record<string, string | undefined>,
+): string | undefined {
+  const candidates = [
+    env.ROBBOT_RUNTIME_PLUGINS_NODE_MODULES,
+    path.resolve(dshRoot, '../../runtime-plugins/node_modules'),
+    path.resolve(dshRoot, '../../../../runtime-plugins/node_modules'),
+    ...(isBuiltCliRuntime(dshRoot) ? [path.resolve(dshRoot, 'node_modules')] : []),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function linkNodeModules(linkPath: string, targetPath: string, label: string): void {
+  try {
+    if (existsSync(linkPath)) {
+      const existing = lstatSync(linkPath);
+      if (existing.isSymbolicLink()) {
+        const currentTarget = path.resolve(path.dirname(linkPath), readlinkSync(linkPath));
+        if (currentTarget === targetPath && existsSync(currentTarget)) {
+          return;
+        }
+        unlinkSync(linkPath);
+      } else {
+        console.warn('[robbot:dsh-process] runtime plugin node_modules link target already exists', {
+          label,
+          linkPath,
+        });
+        return;
+      }
+    }
+
+    mkdirSync(path.dirname(linkPath), { recursive: true });
+    symlinkSync(targetPath, linkPath, 'dir');
+    console.info('[robbot:dsh-process] linked runtime plugin node_modules', {
+      label,
+      linkPath,
+      targetPath,
+    });
+  } catch (error) {
+    console.warn('[robbot:dsh-process] failed to link runtime plugin node_modules', {
+      label,
+      linkPath,
+      targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function linkRuntimePluginPackages(modulesDir: string, pluginNodeModules: string, runtimePluginsManifestPath: string): void {
+  const packageNames = runtimePluginPackageNames(runtimePluginsManifestPath);
+  mkdirSync(modulesDir, { recursive: true });
+  for (const packageName of packageNames) {
+    const targetPath = path.join(pluginNodeModules, packageName);
+    if (!existsSync(targetPath)) {
+      console.warn('[robbot:dsh-process] runtime plugin package is not installed', {
+        packageName,
+        targetPath,
+      });
+      continue;
+    }
+    linkNodeModules(path.join(modulesDir, packageName), targetPath, `profile:${packageName}`);
+  }
+}
+
+function runtimePluginPackageNames(manifestPath: string): string[] {
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      dependencies?: Record<string, unknown>;
+      optionalDependencies?: Record<string, unknown>;
+    };
+    return [
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.optionalDependencies ?? {}),
+    ];
+  } catch (error) {
+    console.warn('[robbot:dsh-process] failed to read runtime plugin manifest', {
+      manifestPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+function enabledRuntimePluginPackageNames(runtimePluginsManifestPath: string): string[] {
+  return enabledRuntimePlugins(runtimePluginsManifestPath).map((plugin) => plugin.name);
+}
+
+function enabledRuntimePlugins(runtimePluginsManifestPath: string): Array<{ name: string; id: string; config: Record<string, unknown> }> {
+  try {
+    const manifest = JSON.parse(readFileSync(runtimePluginsManifestPath, 'utf8')) as {
+      plugins?: Array<{ name?: unknown; id?: unknown; enabled?: unknown; config?: unknown }>;
+    };
+    return (Array.isArray(manifest.plugins) ? manifest.plugins : [])
+      .filter((plugin) => plugin.enabled === true && typeof plugin.name === 'string')
+      .map((plugin) => ({
+        name: plugin.name as string,
+        id: typeof plugin.id === 'string' ? plugin.id : plugin.name as string,
+        config: plugin.config && typeof plugin.config === 'object' && !Array.isArray(plugin.config)
+          ? plugin.config as Record<string, unknown>
+          : {},
+      }));
+  } catch (error) {
+    console.warn('[robbot:dsh-process] failed to read runtime plugin enablement manifest', {
+      runtimePluginsManifestPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+function webProfilePatch(
+  basePatchPath: string,
+  dshRoot: string,
+  env: Record<string, string | undefined>,
+): string {
+  const basePatch = readFileSync(basePatchPath, 'utf8').trimEnd();
+  const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
+  const runtimePluginsRoot = pluginNodeModules ? path.resolve(pluginNodeModules, '..') : undefined;
+  const managedPluginPackages = runtimePluginsRoot
+    ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'))
+    : [];
+  return `${stripManagedPluginPatchRows(basePatch, managedPluginPackages).trimEnd()}\n`;
+}
+
+function syncWebProfileBundles(dshRoot: string, dshHome: string, env: Record<string, string | undefined>): void {
+  const profileDir = path.join(dshHome, 'profiles', 'web');
+  const manifestPath = path.join(profileDir, 'package.json');
+  mkdirSync(profileDir, { recursive: true });
+
+  const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
+  const runtimePluginsRoot = pluginNodeModules ? path.resolve(pluginNodeModules, '..') : undefined;
+  const installedPluginPackages = runtimePluginsRoot
+    ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'))
+    : [];
+  const enabledPluginPackages = runtimePluginsRoot
+    ? enabledRuntimePluginPackageNames(path.join(runtimePluginsRoot, 'manifest.json'))
+    : [];
+  const manifest = readWebProfileManifest(manifestPath);
+  const baseBundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'];
+  const existingBundles = Array.isArray(manifest.dsh?.profile?.bundles)
+    ? manifest.dsh.profile.bundles.filter((value): value is string => typeof value === 'string')
+    : baseBundles;
+  const existingUnmanagedBundles = uniqueStrings(existingBundles)
+    .filter((value) => !baseBundles.includes(value))
+    .filter((value) => !installedPluginPackages.includes(value));
+  const bundles = uniqueStrings([...baseBundles, ...existingUnmanagedBundles, ...enabledPluginPackages]);
+
+  const nextManifest = {
+    ...manifest,
+    name: typeof manifest.name === 'string' ? manifest.name : 'dsh-profile-web',
+    private: manifest.private ?? true,
+    dependencies: manifest.dependencies ?? {},
+    dsh: {
+      ...manifest.dsh,
+      profile: {
+        ...manifest.dsh?.profile,
+        bundles,
+      },
+    },
+  };
+
+  writeFileSync(manifestPath, `${JSON.stringify(nextManifest, undefined, 2)}\n`);
+  console.info('[robbot:dsh-process] synced web profile bundles', {
+    manifestPath,
+    bundles,
+    installedPluginPackages,
+    enabledPluginPackages,
+  });
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
+
+function stripManagedPluginPatchRows(patch: string, managedPluginPackages: string[]): string {
+  if (managedPluginPackages.length === 0) {
+    return patch;
+  }
+
+  const managedPlugins = new Set(managedPluginPackages);
+  const lines = patch.split(/\r?\n/);
+  const blocks: string[][] = [];
+  let currentBlock: string[] = [];
+  for (const line of lines) {
+    if (/^-\s/.test(line)) {
+      if (currentBlock.length > 0) {
+        blocks.push(currentBlock);
+      }
+      currentBlock = [line];
+    } else {
+      currentBlock.push(line);
+    }
+  }
+  if (currentBlock.length > 0) {
+    blocks.push(currentBlock);
+  }
+
+  return blocks
+    .filter((block) => !isManagedPluginPatchRow(block, managedPlugins))
+    .map((block) => block.join('\n').trimEnd())
+    .join('\n');
+}
+
+function isManagedPluginPatchRow(block: string[], managedPlugins: Set<string>): boolean {
+  for (const line of block) {
+    const match = line.match(/^\s{2}(?:id|name):\s*(.+?)\s*$/);
+    if (!match) {
+      continue;
+    }
+    const value = unquoteYamlScalar(match[1]);
+    if (managedPlugins.has(value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function unquoteYamlScalar(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function readWebProfileManifest(manifestPath: string): {
+  name?: unknown;
+  private?: unknown;
+  dependencies?: unknown;
+  dsh?: { profile?: { bundles?: unknown } };
+} {
+  try {
+    const parsed = JSON.parse(readFileSync(manifestPath, 'utf8')) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as ReturnType<typeof readWebProfileManifest>;
+    }
+  } catch {
+    // Missing or malformed profile manifests are recreated with Robbot's base Web profile.
+  }
+  return {};
 }
 
 function summarizeLaunchEnv(env: Record<string, string | undefined>): Record<string, unknown> {

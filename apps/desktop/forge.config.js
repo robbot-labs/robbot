@@ -526,6 +526,16 @@ function ensureGitignoreForAsar(buildPath, _electronVersion, _platform, _arch, c
   }
 }
 
+function sanitizePackagedDshHomeTemplate() {
+  const profileNodeModulesPath = path.join(__dirname, '.dsh-home', 'profiles', 'node_modules');
+  if (!fsSync.existsSync(profileNodeModulesPath)) {
+    return;
+  }
+
+  fsSync.rmSync(profileNodeModulesPath, { force: true, recursive: true });
+  console.log(`[robbot:package] removed template DSH profile node_modules at ${profileNodeModulesPath}`);
+}
+
 module.exports = {
   hooks: {
     async prePackage() {
@@ -537,6 +547,7 @@ module.exports = {
       materializeRuntimeDependencies();
       preparedDshRuntimeBundle = buildDshRuntimeBundle();
       preparedNodeExecutable = prepareNodeRuntime();
+      sanitizePackagedDshHomeTemplate();
     },
     async postPackage(_forgeConfig, packageResult) {
       try {
@@ -575,6 +586,7 @@ module.exports = {
       /^\/electron\/.*\.ts$/,
       /^\/tsconfig\.electron\.json$/,
       /^\/\.runtime(\/|$)/,
+      /^\/\.dsh-home\/profiles\/node_modules(\/|$)/,
       /^\/node_modules\/electron(\/|$)/,
       /^\/node_modules\/@electron(\/|$)/,
       /^\/node_modules\/@electron-internal(\/|$)/,

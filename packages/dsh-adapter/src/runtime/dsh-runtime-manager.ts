@@ -51,7 +51,7 @@ export class DshRuntimeManager {
       const processHandle = new DshProcess(
         runtime.root,
         selectedProtocol,
-        process.env.ROBBOT_DSH_CONFIG ?? configPathForProtocol(selectedProtocol, runtime.config.protocol, runtime.config.configPath),
+        configPathForProtocol(selectedProtocol, runtime.config.protocol, runtime.config.configPath),
         envOverrides,
       );
       await processHandle.start();
@@ -109,9 +109,20 @@ export class DshRuntimeManager {
 }
 
 function configPathForProtocol(protocol: DshProcessProtocol, configuredProtocol: DshProcessProtocol, configuredPath: string): string {
+  if (protocol === 'web') {
+    return '../../config/dsh-web.cordis.patch.yml';
+  }
+
+  if (process.env.ROBBOT_DSH_CONFIG) {
+    return process.env.ROBBOT_DSH_CONFIG;
+  }
+
   if (protocol === configuredProtocol) {
     return configuredPath;
   }
 
-  return protocol === 'sdk' ? '../../config/dsh-sdk-flash.cordis.yml' : '../../config/dsh-acp-flash.cordis.yml';
+  if (protocol === 'sdk') {
+    return '../../config/dsh-sdk-flash.cordis.yml';
+  }
+  return '../../config/dsh-acp-flash.cordis.yml';
 }

@@ -126,6 +126,12 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  runtime-plugins:
+    dependencies:
+      dsh-oil-creator:
+        specifier: link:../dsh-plugs/dsh-oil-creator
+        version: link:../dsh-plugs/dsh-oil-creator
+
   tests/dsh-contract:
     dependencies:
       '@robbot/core':

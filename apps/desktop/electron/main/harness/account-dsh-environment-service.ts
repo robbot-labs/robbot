@@ -24,7 +24,10 @@ export interface AccountDshEnvironment {
   aiRuntime: AccountAiRuntime;
 }
 
-const webProfileMarkerVersion = 1;
+const webProfileMarkerVersion = 3;
+const defaultDeepSeekModel = 'deepseek-v4-flash';
+const defaultOpenAiModel = 'gpt-4.1';
+const robbotOwnedSettingsSections = ['agent-default-model', 'llm-deepseek', 'llm-pi-ai'];
 
 export class AccountDshEnvironmentService {
   resolve(account: AccountRecord): AccountDshEnvironment {
@@ -35,6 +38,7 @@ export class AccountDshEnvironmentService {
     }
 
     const dshHome = path.join(app.getPath('userData'), 'dsh-home', 'accounts', aiRuntime.accountHash);
+    const settings = dshSettingsYaml(aiRuntime);
     const environment: AccountDshEnvironment = {
       accountHash: aiRuntime.accountHash,
       dshHome,
@@ -48,6 +52,7 @@ export class AccountDshEnvironmentService {
           apiUrl: aiRuntime.apiUrl,
           keyFingerprint: aiRuntime.keyFingerprint,
           dshHome,
+          settings,
         }),
       },
     };
@@ -67,6 +72,7 @@ export class AccountDshEnvironmentService {
       credentialsYaml(environment.aiRuntime),
       { mode: 0o600 },
     );
+    syncSettingsYaml(path.join(environment.dshHome, 'settings.yaml'), dshSettingsYaml(environment.aiRuntime));
     fs.writeFileSync(
       path.join(webProfilePath, '.robbot-profile.json'),
       `${JSON.stringify({
@@ -127,6 +133,7 @@ function runtimeFingerprint(input: {
   apiUrl?: string;
   keyFingerprint: string;
   dshHome: string;
+  settings: string;
 }): string {
   return hash(JSON.stringify(input), 32);
 }
@@ -138,7 +145,111 @@ function credentialsYaml(aiRuntime: AccountAiRuntime): string {
   } else {
     entries.DEEPSEEK_API_KEY = aiRuntime.key;
   }
-  return `${Object.entries(entries).map(([key, value]) => `${key}: ${yamlString(value)}`).join('\n')}\n`;
+  return [
+    'version: 1',
+    'refs:',
+    ...Object.entries(entries).map(([key, value]) => `  ${key}: ${yamlString(value)}`),
+    '',
+  ].join('\n');
+}
+
+function dshSettingsYaml(aiRuntime: Omit<AccountAiRuntime, 'fingerprint'>): string {
+  return aiRuntime.provider === 'openai'
+    ? openAiSettingsYaml(aiRuntime)
+    : deepSeekSettingsYaml(aiRuntime);
+}
+
+function deepSeekSettingsYaml(aiRuntime: Omit<AccountAiRuntime, 'fingerprint'>): string {
+  const model = aiRuntime.model ?? defaultDeepSeekModel;
+  const lines = [
+    'agent-default-model:',
+    '  provider: deepseek-official',
+    `  model: ${yamlString(model)}`,
+    '',
+    'llm-deepseek:',
+    '  apiKeyEnv: DEEPSEEK_API_KEY',
+  ];
+  if (aiRuntime.apiUrl) {
+    lines.push(`  baseURL: ${yamlString(aiRuntime.apiUrl)}`);
+  }
+  lines.push(
+    '  models:',
+    `    - id: ${yamlString(model)}`,
+    `      name: ${yamlString(model)}`,
+    '      contextWindow: 1000000',
+    '',
+  );
+  return lines.join('\n');
+}
+
+function openAiSettingsYaml(aiRuntime: Omit<AccountAiRuntime, 'fingerprint'>): string {
+  const model = aiRuntime.model ?? defaultOpenAiModel;
+  const lines = [
+    'agent-default-model:',
+    '  provider: openai',
+    `  model: ${yamlString(model)}`,
+    '',
+    'llm-pi-ai:',
+    '  providers:',
+    '    openai:',
+    '      apiKeyEnv: OPENAI_API_KEY',
+  ];
+  if (aiRuntime.apiUrl) {
+    lines.push(`      baseURL: ${yamlString(aiRuntime.apiUrl)}`);
+  }
+  lines.push(
+    '      models:',
+    `        - id: ${yamlString(model)}`,
+    `          name: ${yamlString(model)}`,
+    '          contextWindow: 1000000',
+    '',
+  );
+  return lines.join('\n');
+}
+
+function syncSettingsYaml(settingsPath: string, robbotSettings: string): void {
+  const existing = safeReadFile(settingsPath);
+  const preserved = existing === undefined
+    ? ''
+    : removeTopLevelSections(existing, robbotOwnedSettingsSections).trimEnd();
+  const next = [
+    preserved,
+    preserved ? '' : undefined,
+    '# Robbot projects the selected account AI provider into DSH user settings.',
+    '# Edit the Robbot account settings, not this generated block.',
+    robbotSettings.trimEnd(),
+    '',
+  ].filter((line): line is string => line !== undefined).join('\n');
+  if (existing !== next) {
+    fs.writeFileSync(settingsPath, next, { mode: 0o600 });
+  }
+}
+
+function safeReadFile(filePath: string): string | undefined {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+function removeTopLevelSections(content: string, sectionNames: string[]): string {
+  const blocked = new Set(sectionNames);
+  const lines = content.split(/\r?\n/);
+  const kept: string[] = [];
+  let skipping = false;
+
+  for (const line of lines) {
+    const match = /^([A-Za-z0-9_-]+):(?:\s.*)?$/.exec(line);
+    if (match && !line.startsWith(' ')) {
+      skipping = blocked.has(match[1]);
+    }
+    if (!skipping) {
+      kept.push(line);
+    }
+  }
+
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 function yamlString(value: string): string {

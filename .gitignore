@@ -156,3 +156,7 @@ docs-ignore/
 
 pnpm
 node
+
+docs-output/
+
+config/node_modules

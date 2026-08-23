@@ -6,6 +6,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, '..');
 const repoRoot = path.resolve(appDir, '../..');
 const dshRoot = path.join(repoRoot, 'vendor', 'deepseek-harness');
+const runtimePluginsRoot = path.join(repoRoot, 'runtime-plugins');
 const outputDir = path.resolve(process.argv[2] ?? path.join(appDir, '.runtime', 'dsh'));
 const runtimeLayoutVersion = 3;
 const currentNativeTag = `${process.platform}-${process.arch}`;
@@ -150,26 +151,41 @@ function packageDirectoryExists(packageDir) {
 }
 
 function resolvePackageDirectory(packageName) {
-  const directPath = path.join(dshRoot, 'node_modules', ...packageParts(packageName));
-  if (packageDirectoryExists(directPath)) {
-    return fs.realpathSync(directPath);
+  for (const nodeModulesRoot of runtimeNodeModulesRoots()) {
+    const directPath = path.join(nodeModulesRoot, ...packageParts(packageName));
+    if (packageDirectoryExists(directPath)) {
+      return fs.realpathSync(directPath);
+    }
+
+    const workspacePath = path.join(nodeModulesRoot, '.pnpm', 'node_modules', ...packageParts(packageName));
+    if (packageDirectoryExists(workspacePath)) {
+      return fs.realpathSync(workspacePath);
+    }
   }
 
-  const workspacePath = path.join(dshRoot, 'node_modules', '.pnpm', 'node_modules', ...packageParts(packageName));
-  if (packageDirectoryExists(workspacePath)) {
-    return fs.realpathSync(workspacePath);
-  }
+  for (const nodeModulesRoot of runtimeNodeModulesRoots()) {
+    const virtualStore = path.join(nodeModulesRoot, '.pnpm');
+    if (!fs.existsSync(virtualStore)) {
+      continue;
+    }
 
-  const virtualStore = path.join(dshRoot, 'node_modules', '.pnpm');
-  const suffix = path.join('node_modules', ...packageParts(packageName));
-  for (const entry of fs.readdirSync(virtualStore)) {
-    const candidate = path.join(virtualStore, entry, suffix);
-    if (packageDirectoryExists(candidate)) {
-      return fs.realpathSync(candidate);
+    const suffix = path.join('node_modules', ...packageParts(packageName));
+    for (const entry of fs.readdirSync(virtualStore)) {
+      const candidate = path.join(virtualStore, entry, suffix);
+      if (packageDirectoryExists(candidate)) {
+        return fs.realpathSync(candidate);
+      }
     }
   }
 
   throw new Error(`Unable to resolve DSH runtime dependency: ${packageName}`);
+}
+
+function runtimeNodeModulesRoots() {
+  return [
+    path.join(dshRoot, 'node_modules'),
+    path.join(runtimePluginsRoot, 'node_modules'),
+  ].filter(directory => fs.existsSync(directory));
 }
 
 function copyPackageDirectory(sourcePath, targetPath, options = {}) {
@@ -247,6 +263,7 @@ function buildFlatRuntime() {
   const cliManifest = packageManifest(cliPath);
   fs.writeFileSync(path.join(outputDir, 'package.json'), `${JSON.stringify(cliManifest, null, 2)}\n`);
   copyPackageDirectory(cliPath, outputDir, { keepSrc: packageUsesSrcAtRuntime(cliPath, cliManifest) });
+  copyRuntimePluginManifest();
 
   const seen = new Set();
   for (const packageName of Object.keys({
@@ -266,7 +283,34 @@ function buildFlatRuntime() {
       }
     }
   }
+
+  for (const packageName of runtimePluginPackageNames()) {
+    materializePackage(packageName, seen);
+  }
   console.log(`[robbot:dsh-runtime] materialized ${seen.size} packages into a flat runtime node_modules`);
+}
+
+function copyRuntimePluginManifest() {
+  const manifestPath = path.join(runtimePluginsRoot, 'manifest.json');
+  if (!fs.existsSync(manifestPath)) {
+    return;
+  }
+
+  fs.copyFileSync(manifestPath, path.join(outputDir, 'manifest.json'));
+}
+
+function runtimePluginPackageNames() {
+  const manifestPath = path.join(runtimePluginsRoot, 'package.json');
+  if (!fs.existsSync(manifestPath)) {
+    return [];
+  }
+
+  const manifest = packageManifest(runtimePluginsRoot);
+  return Object.keys({
+    ...manifest.dependencies,
+    ...manifest.optionalDependencies,
+    ...manifest.peerDependencies,
+  });
 }
 
 function removePathIfExists(relativePath) {
