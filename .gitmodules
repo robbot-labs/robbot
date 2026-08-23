@@ -2,3 +2,6 @@
 	path = vendor/deepseek-harness
 	url = https://github.com/deepseek-ai/deepseek-harness.git
 	branch = master
+[submodule "vendor/dsh-article-creator"]
+	path = vendor/dsh-article-creator
+	url = https://github.com/robbot-labs/dsh-article-creator.git
