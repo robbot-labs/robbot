@@ -25,6 +25,23 @@ export interface DesktopUpdateCheckResult {
   forceUpdate: boolean
 }
 
+export interface RsshubTrendItem {
+  title: string
+  url: string
+  summary: string
+  publishedAt: string | null
+  rank: number
+  hash: string
+}
+
+export interface RsshubTrendResult {
+  source: string
+  fetchedAt: string
+  items: RsshubTrendItem[]
+  stale?: boolean
+  error?: string
+}
+
 // Development requests use Vite's `/api` proxy; packaged builds call the configured API directly.
 const configuredApiUrl = import.meta.env.PUBLIC_API_URL?.trim() || 'http://localhost:3800'
 const apiBaseUrl = import.meta.env.DEV ? '/' : `${configuredApiUrl.replace(/\/$/, '')}/`
@@ -85,5 +102,15 @@ export function checkDesktopUpdate(input: { platform: string; arch: string; vers
   return request<DesktopUpdateCheckResult>({
     method: 'GET',
     url: `/api/robbot/desktop-version/check?${params.toString()}`,
+  })
+}
+
+export function getWeiboHot(input?: { refresh?: boolean }) {
+  const params = new URLSearchParams()
+  if (input?.refresh) params.set('refresh', '1')
+
+  return request<RsshubTrendResult>({
+    method: 'GET',
+    url: `/api/robbot/weibo/hot${params.size ? `?${params.toString()}` : ''}`,
   })
 }

@@ -3,6 +3,7 @@ import { Box, FormControl, MenuItem, OutlinedInput, Select, Tab, Tabs } from '@m
 import { Check, Download, LogOut, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UpdateCheckState } from '../../hooks/useDesktopUpdateCheck'
+import { getWeiboHot } from '../../services/api'
 
 type AiField = 'deepseek' | 'openai'
 
@@ -72,6 +73,7 @@ export function SettingsModal(props: SettingsModalProps) {
   }))
   const [saving, setSaving] = useState<AiField | null>(null)
   const [selecting, setSelecting] = useState<AiField | null>(null)
+  const [testingWeiboHot, setTestingWeiboHot] = useState(false)
 
   const initialValues: Record<AiField, Record<string, unknown> | null> = {
     deepseek: normalizePersistedConfig(
@@ -153,6 +155,23 @@ export function SettingsModal(props: SettingsModalProps) {
     await props.onCheckUpdate({ force: true })
   }
 
+  const testWeiboHot = async () => {
+    setTestingWeiboHot(true)
+
+    try {
+      const result = await getWeiboHot({ refresh: false })
+      if (result.code !== 1 || !result.data) {
+        toast.error(`微博热搜请求失败：${result.msg || 'Request failed'}`)
+        return
+      }
+
+      const staleText = result.data.stale ? '，返回旧缓存' : ''
+      toast.success(`微博热搜请求成功：${result.data.items.length} 条${staleText}`)
+    } finally {
+      setTestingWeiboHot(false)
+    }
+  }
+
   const openUpdateDownload = async () => {
     const url = props.updateCheck.result?.downloadUrl
     if (!url) return
@@ -216,6 +235,22 @@ export function SettingsModal(props: SettingsModalProps) {
           ) : null}
         </div>
       ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+        <div>
+          <div className="text-sm font-medium text-slate-900">RSSHub test</div>
+          <div className="mt-1 text-xs text-slate-500">Request /api/robbot/weibo/hot</div>
+        </div>
+        <button
+          type="button"
+          disabled={testingWeiboHot}
+          className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          onClick={() => void testWeiboHot()}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${testingWeiboHot ? 'animate-spin' : ''}`} />
+          {testingWeiboHot ? 'Testing...' : 'Test Weibo hot'}
+        </button>
+      </div>
     </div>
   )
 
