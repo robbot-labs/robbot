@@ -114,3 +114,23 @@ export function getWeiboHot(input?: { refresh?: boolean }) {
     url: `/api/robbot/weibo/hot${params.size ? `?${params.toString()}` : ''}`,
   })
 }
+
+export function getAibaseNews(input?: { refresh?: boolean }) {
+  const params = new URLSearchParams()
+  if (input?.refresh) params.set('refresh', '1')
+
+  return request<RsshubTrendResult>({
+    method: 'GET',
+    url: `/api/robbot/aibase/news${params.size ? `?${params.toString()}` : ''}`,
+  })
+}
+
+export function get36KrAiInformation(input?: { refresh?: boolean }) {
+  const params = new URLSearchParams()
+  if (input?.refresh) params.set('refresh', '1')
+
+  return request<RsshubTrendResult>({
+    method: 'GET',
+    url: `/api/robbot/36kr/information/AI${params.size ? `?${params.toString()}` : ''}`,
+  })
+}

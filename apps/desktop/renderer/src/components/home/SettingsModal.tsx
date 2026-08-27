@@ -3,9 +3,10 @@ import { Box, FormControl, MenuItem, OutlinedInput, Select, Tab, Tabs } from '@m
 import { Check, Download, LogOut, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UpdateCheckState } from '../../hooks/useDesktopUpdateCheck'
-import { getWeiboHot } from '../../services/api'
+import { get36KrAiInformation, getAibaseNews, getWeiboHot } from '../../services/api'
 
 type AiField = 'deepseek' | 'openai'
+type RsshubTestSource = 'weiboHot' | 'aibaseNews' | 'kr36AiInformation'
 
 type SettingsModalProps = {
   open: boolean
@@ -34,6 +35,32 @@ const models = {
 const fields: Array<{ field: AiField; label: string }> = [
   { field: 'deepseek', label: 'DeepSeek' },
   { field: 'openai', label: 'ChatGPT' },
+]
+
+const rsshubTestSources: Array<{
+  id: RsshubTestSource
+  label: string
+  path: string
+  request: () => ReturnType<typeof getWeiboHot>
+}> = [
+  {
+    id: 'weiboHot',
+    label: 'Test Weibo hot',
+    path: '/api/robbot/weibo/hot',
+    request: () => getWeiboHot({ refresh: false }),
+  },
+  {
+    id: 'aibaseNews',
+    label: 'Test AIBase news',
+    path: '/api/robbot/aibase/news',
+    request: () => getAibaseNews({ refresh: false }),
+  },
+  {
+    id: 'kr36AiInformation',
+    label: 'Test 36Kr AI',
+    path: '/api/robbot/36kr/information/AI',
+    request: () => get36KrAiInformation({ refresh: false }),
+  },
 ]
 
 function tabProps(index: number) {
@@ -73,7 +100,7 @@ export function SettingsModal(props: SettingsModalProps) {
   }))
   const [saving, setSaving] = useState<AiField | null>(null)
   const [selecting, setSelecting] = useState<AiField | null>(null)
-  const [testingWeiboHot, setTestingWeiboHot] = useState(false)
+  const [testingRsshubSource, setTestingRsshubSource] = useState<RsshubTestSource | null>(null)
 
   const initialValues: Record<AiField, Record<string, unknown> | null> = {
     deepseek: normalizePersistedConfig(
@@ -155,20 +182,20 @@ export function SettingsModal(props: SettingsModalProps) {
     await props.onCheckUpdate({ force: true })
   }
 
-  const testWeiboHot = async () => {
-    setTestingWeiboHot(true)
+  const testRsshubSource = async (source: (typeof rsshubTestSources)[number]) => {
+    setTestingRsshubSource(source.id)
 
     try {
-      const result = await getWeiboHot({ refresh: false })
+      const result = await source.request()
       if (result.code !== 1 || !result.data) {
-        toast.error(`微博热搜请求失败：${result.msg || 'Request failed'}`)
+        toast.error(`${source.label} 请求失败：${result.msg || 'Request failed'}`)
         return
       }
 
       const staleText = result.data.stale ? '，返回旧缓存' : ''
-      toast.success(`微博热搜请求成功：${result.data.items.length} 条${staleText}`)
+      toast.success(`${source.label} 请求成功：${result.data.items.length} 条${staleText}`)
     } finally {
-      setTestingWeiboHot(false)
+      setTestingRsshubSource(null)
     }
   }
 
@@ -239,17 +266,27 @@ export function SettingsModal(props: SettingsModalProps) {
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
         <div>
           <div className="text-sm font-medium text-slate-900">RSSHub test</div>
-          <div className="mt-1 text-xs text-slate-500">Request /api/robbot/weibo/hot</div>
+          <div className="mt-1 text-xs text-slate-500">Request RSSHub latest cache endpoints</div>
         </div>
-        <button
-          type="button"
-          disabled={testingWeiboHot}
-          className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-          onClick={() => void testWeiboHot()}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${testingWeiboHot ? 'animate-spin' : ''}`} />
-          {testingWeiboHot ? 'Testing...' : 'Test Weibo hot'}
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {rsshubTestSources.map((source) => {
+            const testing = testingRsshubSource === source.id
+
+            return (
+              <button
+                key={source.id}
+                type="button"
+                title={`Request ${source.path}`}
+                disabled={testingRsshubSource !== null}
+                className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                onClick={() => void testRsshubSource(source)}
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${testing ? 'animate-spin' : ''}`} />
+                {testing ? 'Testing...' : source.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
