@@ -6,6 +6,7 @@
   "type": "module",
   "dependencies": {
     "dsh-article-creator": "link:../vendor/dsh-article-creator",
+    "dsh-plugin-template": "link:../vendor/dsh-plugin-template",
     "dsh-video-creator": "link:../vendor/dsh-video-creator"
   }
 }

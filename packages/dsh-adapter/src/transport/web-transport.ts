@@ -8,6 +8,18 @@ import type { HarnessTransport } from './transport.js';
 
 type Frame = { rpcId?: string; payload?: Record<string, unknown> };
 const WEB_READY_TIMEOUT_MS = Number(process.env.ROBBOT_DSH_WEB_READY_TIMEOUT_MS ?? 120_000);
+const API_CHANNEL = '/api';
+const REMOTE_EVENT_MUX_PATH = '/api/remote.mux';
+
+interface RpcEnvelope<T> {
+  rpcId?: string;
+  result?: { ok?: boolean; value?: T; error?: { message?: string } };
+}
+
+interface ReadyProbeFailure {
+  endpoint: string;
+  message: string;
+}
 
 /** DSH Desktop's native HTTP-upstream/WebSocket-downstream session surface. */
 export class WebTransport implements HarnessTransport {
@@ -20,6 +32,8 @@ export class WebTransport implements HarnessTransport {
   private startPromise?: Promise<void>;
   private startingFingerprint = '';
   private startVersion = 0;
+  private browserCookie = '';
+  private browserLaunchUrl = '';
   private readonly port = 3187 + (process.pid % 1000);
 
   constructor(private readonly runtimeManager: DshRuntimeManager) {}
@@ -34,10 +48,7 @@ export class WebTransport implements HarnessTransport {
 
   async webUrl(metadata?: Record<string, unknown>): Promise<string> {
     await this.ensureServer(metadata);
-    const url = new URL(this.baseUrl());
-    url.searchParams.set('dsh-desktop-mode', 'compatibility');
-    url.searchParams.set('dsh-desktop-platform', process.platform);
-    return url.href;
+    return this.browserLaunchUrl || this.baseUrl();
   }
 
   async createSession(input: CreateSessionInput): Promise<HarnessSession> {
@@ -117,11 +128,15 @@ export class WebTransport implements HarnessTransport {
     if (this.startPromise && this.startingFingerprint !== fingerprint) {
       await this.runtimeManager.stop(this.processSessionId, 'web');
       this.started = false;
+      this.browserCookie = '';
+      this.browserLaunchUrl = '';
       this.sessions.clear();
     }
     if (this.started && this.runtimeFingerprint !== fingerprint) {
       await this.runtimeManager.stop(this.processSessionId, 'web');
       this.started = false;
+      this.browserCookie = '';
+      this.browserLaunchUrl = '';
       this.sessions.clear();
     }
     this.startingFingerprint = fingerprint;
@@ -147,11 +162,12 @@ export class WebTransport implements HarnessTransport {
     });
     const base = this.baseUrl();
     const deadline = Date.now() + WEB_READY_TIMEOUT_MS;
+    let lastFailure: ReadyProbeFailure | undefined;
     while (Date.now() < deadline) {
-      try {
-        const response = await fetch(`${base}/api/session.list`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'client-request', rpcId: randomUUID(), method: 'session.list', payload: {} }) });
-        if (response.ok && version === this.startVersion) { this.started = true; this.runtimeFingerprint = fingerprint; return; }
-      } catch { /* wait for webserver */ }
+      if (!this.browserCookie) await this.authenticate(processHandle);
+      const probe = await this.readyProbe();
+      if (probe === undefined && version === this.startVersion) { this.started = true; this.runtimeFingerprint = fingerprint; return; }
+      lastFailure = probe;
       if (!processHandle.isRunning()) {
         const stderr = processHandle.getRecentStderr();
         throw new HarnessError(
@@ -164,30 +180,98 @@ export class WebTransport implements HarnessTransport {
     console.warn('[robbot:dsh-web] DSH web host did not become ready before timeout', {
       base,
       timeoutMs: WEB_READY_TIMEOUT_MS,
+      lastFailure,
+      stderr: processHandle.getRecentStderr() || undefined,
     });
-    throw new HarnessError('DSH Desktop web host did not become ready.', 'transport_error');
+    const detail = [
+      `DSH Desktop web host did not become ready at ${base} within ${String(WEB_READY_TIMEOUT_MS)}ms.`,
+      lastFailure ? `Last probe ${lastFailure.endpoint}: ${lastFailure.message}` : undefined,
+      processHandle.getRecentStderr() ? `Recent stderr:\n${processHandle.getRecentStderr()}` : undefined,
+    ].filter((line): line is string => Boolean(line)).join('\n');
+    throw new HarnessError(detail, 'transport_error');
   }
 
   private baseUrl(): string { return `http://127.0.0.1:${this.port}`; }
 
+  private async authenticate(processHandle: { getWebAuthUrl: () => string | undefined }): Promise<void> {
+    const url = processHandle.getWebAuthUrl();
+    if (!url) return;
+    this.browserLaunchUrl = url;
+    try {
+      const response = await fetch(url, { method: 'GET', redirect: 'manual' });
+      const cookie = response.headers.get('set-cookie')?.split(';', 1)[0]?.trim();
+      if (cookie) this.browserCookie = cookie;
+    } catch {
+      // The server may not be listening yet even after the launch URL is printed.
+    }
+  }
+
   private async call<T>(method: string, payload: unknown): Promise<T> {
+    const endpoint = endpointFromLegacyMethod(method);
+    const args = argsPayload(endpoint, payload);
+    try {
+      return await this.callEndpoint<T>(endpoint, { args });
+    } catch (error) {
+      if (!shouldTryLegacyEndpoint(error)) throw error;
+      return this.callLegacyEndpoint<T>(method, payload);
+    }
+  }
+
+  private async readyProbe(): Promise<ReadyProbeFailure | undefined> {
+    try {
+      await this.callEndpoint('session/list', { args: { _request: {} } });
+      return undefined;
+    } catch (error) {
+      const slashFailure = probeFailure('session/list', error);
+      if (!shouldTryLegacyEndpoint(error)) return slashFailure;
+      try {
+        await this.callLegacyEndpoint('session.list', {});
+        return undefined;
+      } catch (legacyError) {
+        return probeFailure('session.list', legacyError);
+      }
+    }
+  }
+
+  private async callEndpoint<T>(endpoint: string, payload: unknown): Promise<T> {
     const rpcId = randomUUID();
-    const response = await this.post(`/api/${method}`, { type: 'client-request', rpcId, method, payload });
-    const body = await response.json() as { rpcId?: string; result?: { ok?: boolean; value?: T; error?: { message?: string } } };
+    const response = await this.postRaw(`${API_CHANNEL}/${endpoint}`, { type: 'client-request', rpcId, method: endpoint, payload });
+    if (!response.ok) throw new EndpointTransportError(endpoint, `HTTP ${String(response.status)}`);
+    const body = await response.json() as RpcEnvelope<T>;
+    if (body.rpcId !== rpcId || body.result?.ok !== true) throw new HarnessError(body.result?.error?.message ?? `DSH API call failed: ${endpoint}`, 'protocol_error');
+    return body.result.value as T;
+  }
+
+  private async callLegacyEndpoint<T>(method: string, payload: unknown): Promise<T> {
+    const rpcId = randomUUID();
+    const response = await this.postRaw(`${API_CHANNEL}/${method}`, { type: 'client-request', rpcId, method, payload });
+    if (!response.ok) throw new EndpointTransportError(method, `HTTP ${String(response.status)}`);
+    const body = await response.json() as RpcEnvelope<T>;
     if (body.rpcId !== rpcId || body.result?.ok !== true) throw new HarnessError(body.result?.error?.message ?? `DSH API call failed: ${method}`, 'protocol_error');
     return body.result.value as T;
   }
 
   private async post(pathname: string, body: unknown): Promise<Response> {
-    const response = await fetch(`${this.baseUrl()}${pathname}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const response = await this.postRaw(pathname, body);
     if (!response.ok) throw new HarnessError(`DSH Desktop API returned HTTP ${response.status}.`, 'transport_error');
     return response;
+  }
+
+  private async postRaw(pathname: string, body: unknown): Promise<Response> {
+    return fetch(`${this.baseUrl()}${pathname}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(this.browserCookie ? { cookie: this.browserCookie } : {}),
+      },
+      body: JSON.stringify(body),
+    });
   }
 
   private async readMux(sessionId: string, signal: AbortSignal, queue: AsyncQueue<Frame>): Promise<void> {
     const Socket = (globalThis as unknown as { WebSocket?: WebSocketConstructor }).WebSocket;
     if (!Socket) throw new HarnessError('Electron WebSocket is unavailable.', 'transport_error');
-    const socket = new Socket(`${this.baseUrl().replace(/^http/, 'ws')}/api/events.mux`);
+    const socket = new Socket(`${this.baseUrl().replace(/^http/, 'ws')}${REMOTE_EVENT_MUX_PATH}`);
     await new Promise<void>((resolve, reject) => {
       let settled = false;
       const settleOpen = (): void => { if (!settled) { settled = true; resolve(); } };
@@ -197,12 +281,19 @@ export class WebTransport implements HarnessTransport {
       socket.addEventListener('close', settleError, { once: true });
       if (signal.aborted) { socket.close(); settleError(); }
     });
+    socket.send(JSON.stringify({
+      type: 'open',
+      streamId: sessionId,
+      endpoint: '$events',
+      payload: { args: {} },
+    }));
     const onMessage = (event: { data?: unknown }): void => {
       if (typeof event.data !== 'string') return;
       try {
-        const parsed = JSON.parse(event.data) as Frame;
+        const parsed = legacyFrameFromMuxFrame(JSON.parse(event.data), sessionId);
+        if (parsed === undefined) return;
         const payload = parsed.payload;
-        if (payload?.sessionId === sessionId || payload?.type === 'session/subscribed') queue.push(parsed);
+        if (payload?.sessionId === sessionId || payload?.type === 'session/subscribed' || payload?.type === 'approval/requested') queue.push(parsed);
       } catch (error) {
         console.warn('[robbot:dsh-web] dropped malformed mux frame', error);
       }
@@ -229,6 +320,7 @@ type WebSocketLike = {
   readyState: number;
   addEventListener(type: string, listener: (event: { data?: unknown }) => void, options?: { once?: boolean }): void;
   removeEventListener(type: string, listener: (event: { data?: unknown }) => void): void;
+  send(data: string): void;
   close(): void;
 };
 
@@ -289,6 +381,64 @@ function runtimePluginsManifestPath(): string | undefined {
     path.resolve(process.cwd(), '..', '..', 'runtime-plugins', 'manifest.json'),
   ];
   return candidates.find((candidate) => existsSync(candidate));
+}
+
+function endpointFromLegacyMethod(method: string): string {
+  return method.includes('/') ? method : method.replaceAll('.', '/');
+}
+
+function argsPayload(endpoint: string, payload: unknown): Record<string, unknown> {
+  if (endpoint === 'session/list') return { _request: payload };
+  return { request: payload };
+}
+
+function shouldTryLegacyEndpoint(error: unknown): boolean {
+  return error instanceof EndpointTransportError || String(error).includes('method ') || String(error).includes('Remote payload');
+}
+
+function probeFailure(endpoint: string, error: unknown): ReadyProbeFailure {
+  return {
+    endpoint,
+    message: error instanceof Error ? error.message : String(error),
+  };
+}
+
+class EndpointTransportError extends Error {
+  constructor(readonly endpoint: string, detail: string) {
+    super(`${endpoint}: ${detail}`);
+  }
+}
+
+function legacyFrameFromMuxFrame(value: unknown, sessionId: string): Frame | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const frame = value as Record<string, unknown>;
+  if (frame.payload && typeof frame.payload === 'object') return value as Frame;
+  if (frame.type !== 'item' || frame.streamId !== sessionId || !frame.value || typeof frame.value !== 'object') return undefined;
+
+  const item = frame.value as Record<string, unknown>;
+  if (item.type === 'ready') return { payload: { type: 'session/subscribed', sessionId } };
+  if (item.type === 'waterfall' && item.event === 'approval/request' && typeof item.eventId === 'string') {
+    const request = item.request && typeof item.request === 'object' ? item.request as Record<string, unknown> : {};
+    return {
+      rpcId: item.eventId,
+      payload: {
+        type: 'approval/requested',
+        approvalId: item.eventId,
+        toolName: request.toolName,
+        reason: request.reason,
+      },
+    };
+  }
+  if (item.type === 'emit' && typeof item.event === 'string' && Array.isArray(item.args)) {
+    return {
+      payload: {
+        type: item.event,
+        sessionId,
+        args: item.args,
+      },
+    };
+  }
+  return undefined;
 }
 
 function mapFrame(sessionId: string, frame: Frame, approvals: Map<string, { rpcId: string; approvalId: string }>): HarnessEvent | undefined {

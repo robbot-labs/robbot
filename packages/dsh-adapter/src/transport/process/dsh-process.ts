@@ -13,6 +13,8 @@ export class DshProcess {
   private channel?: StdioChannel;
   private exited = false;
   private recentStderr = '';
+  private recentStdout = '';
+  private webAuthUrl?: string;
   constructor(
     private readonly cwd: string,
     private readonly protocol: DshProcessProtocol,
@@ -110,6 +112,16 @@ export class DshProcess {
       this.recentStderr = `${this.recentStderr}${chunk}`.slice(-8_000);
       console.warn('[robbot:dsh-process:stderr]', chunk.trim());
     });
+    if (this.protocol === 'web') {
+      this.child.stdout.setEncoding('utf8');
+      this.child.stdout.on('data', (chunk: string) => {
+        this.recentStdout = `${this.recentStdout}${chunk}`.slice(-8_000);
+        const match = /dsh web:\s+(http:\/\/[^\s]+)/u.exec(this.recentStdout);
+        if (match) {
+          this.webAuthUrl = match[1];
+        }
+      });
+    }
 
     this.channel = new StdioChannel(this.child.stdin, this.child.stdout, this.child.stderr);
     return this.channel;
@@ -129,6 +141,10 @@ export class DshProcess {
 
   getRecentStderr(): string {
     return this.recentStderr.trim();
+  }
+
+  getWebAuthUrl(): string | undefined {
+    return this.webAuthUrl;
   }
 
   async stop(): Promise<void> {

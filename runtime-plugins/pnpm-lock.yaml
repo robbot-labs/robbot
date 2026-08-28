@@ -1,0 +1,19 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      dsh-article-creator:
+        specifier: link:../vendor/dsh-article-creator
+        version: link:../vendor/dsh-article-creator
+      dsh-plugin-template:
+        specifier: link:../vendor/dsh-plugin-template
+        version: link:../vendor/dsh-plugin-template
+      dsh-video-creator:
+        specifier: link:../vendor/dsh-video-creator
+        version: link:../vendor/dsh-video-creator
