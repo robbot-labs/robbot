@@ -8,3 +8,6 @@
 [submodule "vendor/dsh-video-creator"]
 	path = vendor/dsh-video-creator
 	url = https://github.com/robbot-labs/dsh-video-creator.git
+[submodule "vendor/dsh-plugin-template"]
+	path = vendor/dsh-plugin-template
+	url = https://github.com/robbot-labs/dsh-plugin-template.git
