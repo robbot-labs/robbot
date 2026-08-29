@@ -1,0 +1,133 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "disabled": "Disabled",
+    "enabled": "Enabled",
+    "loading": "Loading...",
+    "refresh": "Refresh",
+    "retry": "Retry",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "app": {
+    "title": "Robbot - Personal AI powered by DeepSeek Harness",
+    "startingDsh": "Starting DSH...",
+    "settings": "Settings",
+    "runtimePlugins": "Runtime Plugins",
+    "pluginsButton": "Plugins",
+    "reloadDsh": "Reload DSH",
+    "confirmReloadDsh": "Are you sure you want to reload DeepSeek Harness?",
+    "signOut": "Sign out",
+    "confirmSignOut": "Are you sure you want to sign out?",
+    "dshNotReady": "DSH Desktop is not ready",
+    "dshLoading": {
+      "title": "Starting DeepSeek Harness",
+      "description": "Preparing your isolated runtime..."
+    },
+    "pluginConflict": {
+      "invalidTitle": "Runtime plugin configuration is invalid",
+      "title": "Plugin UI conflict",
+      "description": "The following plugins all own the HARNESS single slot. Each slot can only enable one owner, so choose the UI plugin to use now.",
+      "apply": "Apply and start"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Account and AI models",
+    "sectionsLabel": "Settings sections",
+    "missingApiKey": "You must configure and select an API key",
+    "tabs": {
+      "model": "Model",
+      "plugins": "Plugins",
+      "account": "Account",
+      "language": "Language",
+      "version": "Version"
+    },
+    "model": {
+      "title": "Model",
+      "description": "API key is protected in a password field. New configuration takes effect the next time you send a message; currently running tasks are not affected.",
+      "active": "Currently active",
+      "select": "Select",
+      "selecting": "Selecting...",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "Enter API key",
+      "hideApiKey": "Hide API key",
+      "showApiKey": "Show API key",
+      "otherConfiguration": "Other configuration (JSON)",
+      "noChanges": "No changes to save",
+      "saveSuccess": "{{provider}} configuration saved",
+      "saveFailed": "Save failed: {{message}}",
+      "missingKey": "Configure an API key first",
+      "invalidJson": "Save failed: enter a valid JSON object",
+      "jsonObjectRequired": "Save failed: configuration must be a JSON object"
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Installed plugins stay installed when disabled.",
+      "runtimeTitle": "Runtime plugins",
+      "runtimeDescription": "Conflicting plugins are single-select. Regular plugins can be enabled together.",
+      "loadFailed": "Failed to load plugin list: {{message}}",
+      "toggleFailed": "Failed to change plugin: {{message}}",
+      "enabled": "{{name}} enabled",
+      "disabled": "{{name}} disabled",
+      "ownerSelected": "{{name}} selected as {{slot}} owner",
+      "ownerNone": "{{slot}} owner set to NONE",
+      "stillConflicts": "{{message}}, but plugin configuration still has conflicts",
+      "reloadingHarness": "{{message}}, reloading HARNESS",
+      "conflictTitle": "Current plugin configuration has conflicts",
+      "loading": "Loading plugins...",
+      "empty": "No runtime plugins declared.",
+      "noneDescription": "Do not enable any {{slot}} owner UI plugin",
+      "nonConflicting": "Non-conflicting plugins",
+      "notDeclared": "Not declared in manifest",
+      "source": "Source: {{source}}",
+      "disablePlugin": "Disable {{name}}",
+      "enablePlugin": "Enable {{name}}"
+    },
+    "account": {
+      "title": "Account",
+      "description": "Your Robbot account",
+      "email": "Email",
+      "signOut": "Sign out"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Choose the display language for Robbot",
+      "chinese": "中文",
+      "english": "English"
+    },
+    "version": {
+      "title": "Version",
+      "description": "Desktop app updates",
+      "desktopUpdate": "Desktop update",
+      "currentVersion": "Current version {{version}} - {{platform}}/{{arch}}",
+      "checking": "Checking...",
+      "checkUpdate": "Check update",
+      "latest": "You are using the latest version.",
+      "available": "New version available: {{version}}",
+      "required": "Required",
+      "downloadInstaller": "Download installer",
+      "downloadOpenFailed": "Failed to open download link: {{message}}",
+      "rsshubTest": "RSSHub test",
+      "rsshubDescription": "Request RSSHub latest cache endpoints",
+      "testing": "Testing...",
+      "requestFailed": "{{label}} request failed: {{message}}",
+      "requestSuccess": "{{label}} request succeeded: {{count}} items{{stale}}",
+      "staleCache": ", returned stale cache",
+      "requestPath": "Request {{path}}",
+      "sources": {
+        "weiboHot": "Test Weibo hot",
+        "aibaseNews": "Test AIBase news",
+        "kr36AiInformation": "Test 36Kr AI"
+      }
+    }
+  },
+  "diagnostics": {
+    "singleSlotConflict": "single slot \"{{slot}}\" has multiple owners: {{owners}}",
+    "missingPlugin": "enabled plugin is missing: {{plugin}}",
+    "unknownSlotRegistration": "unknown slot registration in {{plugin}}: {{slot}}",
+    "invalidUiRegistration": "invalid UI registration in {{plugin}}: {{message}}",
+    "runtimePluginDiagnostic": "Runtime plugin diagnostic"
+  }
+}

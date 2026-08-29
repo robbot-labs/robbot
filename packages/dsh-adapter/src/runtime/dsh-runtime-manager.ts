@@ -100,8 +100,14 @@ export class DshRuntimeManager {
   }
 
   async stopAll(): Promise<void> {
+    const startingEntries = [...this.starting.entries()];
+    this.starting.clear();
     const entries = [...this.processes.entries()];
-    await Promise.all(entries.map(async ([processKey, processHandle]) => {
+    const startedWhileStopping = await Promise.all(startingEntries.map(async ([processKey, pending]) => {
+      const processHandle = await pending.catch(() => undefined);
+      return processHandle ? [processKey, processHandle] as const : undefined;
+    }));
+    await Promise.all([...entries, ...startedWhileStopping.filter((entry): entry is readonly [string, DshProcess] => entry !== undefined)].map(async ([processKey, processHandle]) => {
       await processHandle.stop();
       this.processes.delete(processKey);
     }));

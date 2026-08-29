@@ -73,7 +73,11 @@ export function LoginPage(props: { onDone: (user: AuthUser) => void }) {
         onClick={toggle}
         edge="end"
         aria-label={visible ? '隐藏密码' : '显示密码'}
-        sx={{ color: 'rgb(100 116 139)' }}
+        sx={{
+          color: 'rgb(100 116 139)',
+          cursor: 'pointer',
+          '&:hover': { background: 'rgb(238 242 255)', color: 'rgb(79 70 229)' },
+        }}
       >
         {visible ? <EyeOff size={18} /> : <Eye size={18} />}
       </IconButton>
@@ -141,13 +145,14 @@ export function LoginPage(props: { onDone: (user: AuthUser) => void }) {
               minHeight: 30,
               borderRadius: '6px',
               color: 'rgb(100 116 139)',
+              cursor: 'pointer',
               fontSize: 13,
               fontWeight: 600,
               textTransform: 'none',
             },
             '& .Mui-selected': {
-              background: '#0f1115',
-              color: '#ffffff !important',
+              background: 'rgb(224 231 255)',
+              color: 'rgb(67 56 202) !important',
             },
           }}
         >
@@ -203,12 +208,13 @@ export function LoginPage(props: { onDone: (user: AuthUser) => void }) {
             mt: 0.5,
             height: 42,
             borderRadius: '8px',
-            background: '#0f1115',
+            background: 'rgb(99 102 241)',
             boxShadow: 'none',
+            cursor: 'pointer',
             fontSize: 14,
             fontWeight: 700,
             textTransform: 'none',
-            '&:hover': { background: '#1f232b', boxShadow: 'none' },
+            '&:hover': { background: 'rgb(79 70 229)', boxShadow: 'none' },
             '&.Mui-disabled': { background: 'rgb(203 213 225)', color: '#ffffff' },
           }}
         >
@@ -234,7 +240,7 @@ const fieldSx = {
     fontSize: 14,
     '& fieldset': { borderColor: 'rgb(226 232 240)' },
     '&:hover fieldset': { borderColor: 'rgb(148 163 184)' },
-    '&.Mui-focused fieldset': { borderColor: '#0f1115', borderWidth: 1 },
+    '&.Mui-focused fieldset': { borderColor: 'rgb(99 102 241)', borderWidth: 1 },
   },
   '& .MuiInputBase-input': {
     height: 24,

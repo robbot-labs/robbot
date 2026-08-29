@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import { Box, Tab, Tabs } from '@mui/material'
-import { X } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { SettingsButton } from '../../common/SettingsButton'
 import type { UpdateCheckState } from '../../../hooks/useDesktopUpdateCheck'
 import { AccountSettingsPanel } from './AccountSettingsPanel'
-import { type AiField, ModelSettingsPanel, readAiConfigKey } from './ModelSettingsPanel'
+import { readAiConfigKey } from './aiConfig'
+import { LanguageSettingsPanel } from './LanguageSettingsPanel'
+import { type AiField, ModelSettingsPanel } from './ModelSettingsPanel'
 import { RuntimePluginsPanel } from './RuntimePluginsPanel'
 import { VersionSettingsPanel } from './VersionSettingsPanel'
 
@@ -48,6 +52,7 @@ function TabPanel(props: { value: number; index: number; children: React.ReactNo
 }
 
 export function SettingsModal(props: SettingsModalProps) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState(props.initialTab ?? 0)
 
   if (!props.open) return null
@@ -58,7 +63,7 @@ export function SettingsModal(props: SettingsModalProps) {
       : ''
 
     if (!props.selectedAi || !selectedKey) {
-      toast.warning('必须配置并选中一个 API key')
+      toast.warning(t('settings.missingApiKey'), { duration: 1000 })
       return
     }
 
@@ -76,17 +81,16 @@ export function SettingsModal(props: SettingsModalProps) {
     >
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
         <div>
-          <h2 className="m-0 text-lg font-semibold text-slate-950">Settings</h2>
-          <p className="m-0 mt-1 text-xs text-slate-500">Account and AI models</p>
+          <h2 className="m-0 text-lg font-semibold text-slate-950">{t('settings.title')}</h2>
+          <p className="m-0 mt-1 text-xs text-slate-500">{t('settings.subtitle')}</p>
         </div>
-        <button
-          type="button"
-          className="rounded p-1 text-slate-400 hover:bg-slate-100"
+        <SettingsButton
           onClick={close}
-          aria-label="Close"
+          aria-label={t('common.back')}
         >
-          <X className="h-4 w-4" />
-        </button>
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+          <span>{t('common.back')}</span>
+        </SettingsButton>
       </div>
 
       <Box
@@ -103,7 +107,7 @@ export function SettingsModal(props: SettingsModalProps) {
           orientation="vertical"
           value={tab}
           onChange={(_, value: number) => setTab(value)}
-          aria-label="Settings sections"
+          aria-label={t('settings.sectionsLabel')}
           sx={{
             width: 150,
             flexShrink: 0,
@@ -111,25 +115,34 @@ export function SettingsModal(props: SettingsModalProps) {
             borderColor: 'divider',
             '& .MuiTab-root': {
               alignItems: 'flex-start',
+              cursor: 'pointer',
+              color: 'rgb(100 116 139)',
               minHeight: 48,
               textTransform: 'none',
               fontSize: 13,
             },
+            '& .MuiTab-root.Mui-selected': {
+              color: 'rgb(67 56 202)',
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: 'rgb(67 56 202)',
+            },
           }}
         >
-          <Tab label="Model" {...tabProps(0)} />
-          <Tab label="Plugins" {...tabProps(1)} />
-          <Tab label="Account" {...tabProps(2)} />
+          <Tab label={t('settings.tabs.model')} {...tabProps(0)} />
+          <Tab label={t('settings.tabs.plugins')} {...tabProps(1)} />
+          <Tab label={t('settings.tabs.account')} {...tabProps(2)} />
+          <Tab label={t('settings.tabs.language')} {...tabProps(3)} />
           <Tab
             label={(
               <span className="relative inline-flex items-center">
-                Version
+                {t('settings.tabs.version')}
                 {props.updateCheck.status === 'available' ? (
                   <span className="absolute -right-2 -top-1 h-2 w-2 rounded-full bg-rose-500" />
                 ) : null}
               </span>
             )}
-            {...tabProps(3)}
+            {...tabProps(4)}
           />
         </Tabs>
 
@@ -145,8 +158,8 @@ export function SettingsModal(props: SettingsModalProps) {
 
         <TabPanel value={tab} index={1}>
           <div className="p-6">
-            <h3 className="m-0 text-base font-semibold text-slate-950">Plugins</h3>
-            <p className="mt-1 text-sm text-slate-500">Installed plugins stay installed when disabled.</p>
+            <h3 className="m-0 text-base font-semibold text-slate-950">{t('settings.plugins.title')}</h3>
+            <p className="mt-1 text-sm text-slate-500">{t('settings.plugins.description')}</p>
 
             <div className="mt-6">
               <RuntimePluginsPanel onRuntimePluginsChanged={props.onRuntimePluginsChanged} />
@@ -159,6 +172,10 @@ export function SettingsModal(props: SettingsModalProps) {
         </TabPanel>
 
         <TabPanel value={tab} index={3}>
+          <LanguageSettingsPanel />
+        </TabPanel>
+
+        <TabPanel value={tab} index={4}>
           <VersionSettingsPanel
             appVersion={props.appVersion}
             updateCheck={props.updateCheck}

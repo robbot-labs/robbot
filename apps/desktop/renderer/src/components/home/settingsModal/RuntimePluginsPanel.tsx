@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Switch } from '@mui/material'
+import type { TFunction } from 'i18next'
 import { Plug, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { SettingsButton } from '../../common/SettingsButton'
 import type {
   RuntimePluginDiagnostic,
   RuntimePluginManifestEntry,
@@ -21,13 +24,10 @@ type ExclusivePluginGroup = {
 // const NO_EXCLUSIVE_OWNER = '__none__'
 
 export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
+  const { t } = useTranslation()
   const [pluginSettings, setPluginSettings] = useState<RuntimePluginSettingsResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState<string | null>(null)
-
-  useEffect(() => {
-    void loadRuntimePlugins()
-  }, [])
 
   const groups = useMemo(() => exclusiveGroups(pluginSettings), [pluginSettings])
   const groupedPluginNames = useMemo(
@@ -43,25 +43,29 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
     [pluginSettings],
   )
 
-  async function loadRuntimePlugins() {
+  const loadRuntimePlugins = useCallback(async () => {
     setLoading(true)
     try {
       setPluginSettings(await window.robbot.harness.getRuntimePlugins())
     } catch (cause) {
-      toast.error(`插件列表加载失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      toast.error(t('settings.plugins.loadFailed', { message: cause instanceof Error ? cause.message : String(cause) }))
     } finally {
       setLoading(false)
     }
-  }
+  }, [t])
+
+  useEffect(() => {
+    queueMicrotask(() => void loadRuntimePlugins())
+  }, [loadRuntimePlugins])
 
   async function setStandaloneEnabled(name: string, enabled: boolean) {
     setSaving(name)
     try {
       const next = await window.robbot.harness.setRuntimePluginEnabled({ name, enabled })
       setPluginSettings(next)
-      await afterPluginChange(next, `${name} 已${enabled ? '启用' : '停用'}`)
+      await afterPluginChange(next, t(enabled ? 'settings.plugins.enabled' : 'settings.plugins.disabled', { name }))
     } catch (cause) {
-      toast.error(`插件切换失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      toast.error(t('settings.plugins.toggleFailed', { message: cause instanceof Error ? cause.message : String(cause) }))
     } finally {
       setSaving(null)
     }
@@ -79,10 +83,12 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
       setPluginSettings(next)
       await afterPluginChange(
         next,
-        ownerName === null ? `${group.slot} owner 已设为 NONE` : `${labelForPlugin({ name: ownerName })} 已选为 ${group.slot} owner`,
+        ownerName === null
+          ? t('settings.plugins.ownerNone', { slot: group.slot })
+          : t('settings.plugins.ownerSelected', { name: labelForPlugin({ name: ownerName }), slot: group.slot }),
       )
     } catch (cause) {
-      toast.error(`插件切换失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      toast.error(t('settings.plugins.toggleFailed', { message: cause instanceof Error ? cause.message : String(cause) }))
     } finally {
       setSaving(null)
     }
@@ -90,10 +96,10 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
 
   async function afterPluginChange(next: RuntimePluginSettingsResult, successMessage: string) {
     if (!next.resolution.ok) {
-      toast.warning(`${successMessage}，但当前插件配置仍有冲突`, { duration: 1000 })
+      toast.warning(t('settings.plugins.stillConflicts', { message: successMessage }), { duration: 1000 })
       return
     }
-    toast.success(`${successMessage}，正在重新加载 HARNESS`, { duration: 1000 })
+    toast.success(t('settings.plugins.reloadingHarness', { message: successMessage }), { duration: 1000 })
     await props.onRuntimePluginsChanged?.()
   }
 
@@ -101,36 +107,34 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
     <div className="rounded-lg border border-slate-200 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-medium text-slate-900">Runtime plugins</div>
-          <div className="mt-1 text-xs text-slate-500">冲突插件单选，普通插件可多选启用。</div>
+          <div className="text-sm font-medium text-slate-900">{t('settings.plugins.runtimeTitle')}</div>
+          <div className="mt-1 text-xs text-slate-500">{t('settings.plugins.runtimeDescription')}</div>
         </div>
-        <button
-          type="button"
+        <SettingsButton
           disabled={loading}
-          className="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           onClick={() => void loadRuntimePlugins()}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+          {t('common.refresh')}
+        </SettingsButton>
       </div>
 
       {pluginSettings?.resolution.ok === false ? (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
-          <div className="font-medium">当前插件配置存在冲突</div>
-          <div className="mt-1 whitespace-pre-wrap">{pluginSettings.resolution.diagnostics.map(formatRuntimePluginDiagnostic).join('\n')}</div>
+          <div className="font-medium">{t('settings.plugins.conflictTitle')}</div>
+          <div className="mt-1 whitespace-pre-wrap">{pluginSettings.resolution.diagnostics.map((diagnostic) => formatRuntimePluginDiagnostic(diagnostic, t)).join('\n')}</div>
         </div>
       ) : null}
 
       {loading && !pluginSettings ? (
         <div className="mt-4 flex items-center gap-2 rounded-md border border-slate-200 p-4 text-sm text-slate-500">
           <RefreshCw className="h-4 w-4 animate-spin" />
-          Loading plugins...
+          {t('settings.plugins.loading')}
         </div>
       ) : null}
 
       {pluginSettings && pluginSettings.plugins.length === 0 ? (
-        <div className="mt-4 rounded-md border border-slate-200 p-4 text-sm text-slate-500">No runtime plugins declared.</div>
+        <div className="mt-4 rounded-md border border-slate-200 p-4 text-sm text-slate-500">{t('settings.plugins.empty')}</div>
       ) : null}
 
       {groups.length > 0 ? (
@@ -157,6 +161,7 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
                         name={`runtime-plugin-owner-${group.slot}`}
                         checked={checked}
                         disabled={saving !== null}
+                        className="cursor-pointer"
                         onChange={() => void selectExclusiveOwner(group, plugin.name)}
                       />
                     </label>
@@ -169,7 +174,7 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
                       <Plug className="h-4 w-4 text-slate-300" />
                       <span className="truncate text-sm font-medium text-slate-900">NONE</span>
                     </span>
-                    <span className="mt-1 block text-xs text-slate-500">不启用任何 {group.slot} owner UI 插件</span>
+                    <span className="mt-1 block text-xs text-slate-500">{t('settings.plugins.noneDescription', { slot: group.slot })}</span>
                   </span>
                   <input
                     type="radio"
@@ -188,7 +193,7 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
 
       {standalonePlugins.length > 0 ? (
         <div className="mt-4">
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Non-conflicting plugins</div>
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">{t('settings.plugins.nonConflicting')}</div>
           <div className="divide-y divide-slate-200 rounded-md border border-slate-200">
             {standalonePlugins.map((plugin) => (
               <div key={plugin.name} className="flex items-center justify-between gap-4 p-4">
@@ -202,8 +207,9 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
                 <Switch
                   checked={plugin.enabled}
                   disabled={saving !== null}
+                  sx={{ cursor: 'pointer' }}
                   onChange={(_, checked) => void setStandaloneEnabled(plugin.name, checked)}
-                  inputProps={{ 'aria-label': `${plugin.enabled ? 'Disable' : 'Enable'} ${plugin.name}` }}
+                  inputProps={{ 'aria-label': t(plugin.enabled ? 'settings.plugins.disablePlugin' : 'settings.plugins.enablePlugin', { name: plugin.name }) }}
                 />
               </div>
             ))}
@@ -215,15 +221,16 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
 }
 
 function PluginMeta(props: { plugin: RuntimePluginManifestEntry | undefined }) {
+  const { t } = useTranslation()
   const plugin = props.plugin
   if (!plugin) {
-    return <span className="mt-1 block text-xs text-slate-500">Not declared in manifest</span>
+    return <span className="mt-1 block text-xs text-slate-500">{t('settings.plugins.notDeclared')}</span>
   }
 
   return (
     <span className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-      <span>{plugin.enabled ? 'Enabled' : 'Disabled'}</span>
-      {plugin.source ? <span>Source: {plugin.source}</span> : null}
+      <span>{plugin.enabled ? t('common.enabled') : t('common.disabled')}</span>
+      {plugin.source ? <span>{t('settings.plugins.source', { source: plugin.source })}</span> : null}
     </span>
   )
 }
@@ -264,18 +271,18 @@ function labelForPlugin(plugin: { name: string; displayName?: string }) {
   return plugin.displayName ?? plugin.name
 }
 
-function formatRuntimePluginDiagnostic(diagnostic: RuntimePluginDiagnostic): string {
+function formatRuntimePluginDiagnostic(diagnostic: RuntimePluginDiagnostic, t: TFunction): string {
   if (diagnostic.type === 'single-slot-conflict') {
-    return `single slot "${diagnostic.slot}" has multiple owners: ${diagnostic.plugins.map(labelForPlugin).join(', ')}`
+    return t('diagnostics.singleSlotConflict', { slot: diagnostic.slot, owners: diagnostic.plugins.map(labelForPlugin).join(', ') })
   }
   if (diagnostic.type === 'missing-plugin') {
-    return `enabled plugin is missing: ${labelForPlugin(diagnostic.plugin)}`
+    return t('diagnostics.missingPlugin', { plugin: labelForPlugin(diagnostic.plugin) })
   }
   if (diagnostic.type === 'unknown-slot-registration') {
-    return `unknown slot registration in ${labelForPlugin(diagnostic.plugin)}: ${diagnostic.slot}`
+    return t('diagnostics.unknownSlotRegistration', { plugin: labelForPlugin(diagnostic.plugin), slot: diagnostic.slot })
   }
   if (diagnostic.type === 'invalid-ui-registration') {
-    return `invalid UI registration in ${labelForPlugin(diagnostic.plugin)}: ${diagnostic.message}`
+    return t('diagnostics.invalidUiRegistration', { plugin: labelForPlugin(diagnostic.plugin), message: diagnostic.message })
   }
-  return 'Runtime plugin diagnostic'
+  return t('diagnostics.runtimePluginDiagnostic')
 }

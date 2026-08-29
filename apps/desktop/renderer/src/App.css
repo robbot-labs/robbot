@@ -1,6 +1,18 @@
 @keyframes pulse-soft { 50% { opacity: .45; } }
 .status-pulse { animation: pulse-soft 1.6s ease-in-out infinite; }
 
+@keyframes plugin-attention {
+  0%, 72%, 100% { transform: translateY(0); }
+  76% { transform: translateY(-2px); }
+  80% { transform: translateY(0); }
+}
+
+.plugin-button-icon { animation: plugin-attention 2.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-button-icon { animation: none; }
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 .dsh-spinner {
   width: 34px;

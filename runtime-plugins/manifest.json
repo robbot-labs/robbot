@@ -2,12 +2,12 @@
   "plugins": [
     {
       "name": "dsh-article-creator",
-      "enabled": true,
+      "enabled": false,
       "source": "dsh-native"
     },
     {
       "name": "dsh-plugin-template",
-      "enabled": false,
+      "enabled": true,
       "source": "dsh-native"
     },
     {

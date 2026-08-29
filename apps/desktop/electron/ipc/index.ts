@@ -63,7 +63,7 @@ export function registerIpcHandlers(services: RuntimeServices): void {
     const current = services.auth.getCurrentUser();
     services.auth.logout();
     if (current) {
-      void services.harness.resetForAccount(current.id).catch((cause) => {
+      await services.harness.resetForAccount(current.id).catch((cause) => {
         console.warn('Failed to reset DSH runtime after logout:', cause);
       });
     }

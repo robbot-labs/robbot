@@ -32,6 +32,7 @@ export class WebTransport implements HarnessTransport {
   private startPromise?: Promise<void>;
   private startingFingerprint = '';
   private startVersion = 0;
+  private startAbort?: AbortController;
   private browserCookie = '';
   private browserLaunchUrl = '';
   private readonly port = 3187 + (process.pid % 1000);
@@ -99,8 +100,15 @@ export class WebTransport implements HarnessTransport {
   }
 
   async dispose(): Promise<void> {
+    this.startAbort?.abort();
+    this.startAbort = undefined;
+    this.startPromise = undefined;
+    this.startingFingerprint = '';
+    this.startVersion += 1;
     this.started = false;
     this.runtimeFingerprint = '';
+    this.browserCookie = '';
+    this.browserLaunchUrl = '';
     this.sessions.clear();
     this.approvals.clear();
   }
@@ -126,6 +134,7 @@ export class WebTransport implements HarnessTransport {
       return this.startPromise;
     }
     if (this.startPromise && this.startingFingerprint !== fingerprint) {
+      this.startAbort?.abort();
       await this.runtimeManager.stop(this.processSessionId, 'web');
       this.started = false;
       this.browserCookie = '';
@@ -141,7 +150,9 @@ export class WebTransport implements HarnessTransport {
     }
     this.startingFingerprint = fingerprint;
     const version = ++this.startVersion;
-    const startPromise = this.startServer(metadata, dshHome, fingerprint, version);
+    const abort = new AbortController();
+    this.startAbort = abort;
+    const startPromise = this.startServer(metadata, dshHome, fingerprint, version, abort.signal);
     this.startPromise = startPromise;
     try {
       await startPromise;
@@ -149,23 +160,25 @@ export class WebTransport implements HarnessTransport {
       if (this.startPromise === startPromise) {
         this.startPromise = undefined;
         this.startingFingerprint = '';
+        this.startAbort = undefined;
       }
     }
   }
 
-  private async startServer(metadata: Record<string, unknown> | undefined, dshHome: string | undefined, fingerprint: string, version: number): Promise<void> {
+  private async startServer(metadata: Record<string, unknown> | undefined, dshHome: string | undefined, fingerprint: string, version: number, signal: AbortSignal): Promise<void> {
     const runtime = this.runtimeManager.resolveRuntime();
     const processHandle = await this.runtimeManager.start(this.processSessionId, 'web', {
       ROBBOT_DSH_WEB_PORT: String(this.port),
       DSH_HOME: dshHome ?? path.resolve(runtime.root, '../../.dsh-home'),
       ...runtimeEnv(metadata),
     });
+    if (signal.aborted) throw new HarnessError('DSH Desktop web host start was cancelled.', 'run_interrupted');
     const base = this.baseUrl();
     const deadline = Date.now() + WEB_READY_TIMEOUT_MS;
     let lastFailure: ReadyProbeFailure | undefined;
-    while (Date.now() < deadline) {
-      if (!this.browserCookie) await this.authenticate(processHandle);
-      const probe = await this.readyProbe();
+    while (!signal.aborted && Date.now() < deadline) {
+      if (!this.browserCookie) await this.authenticate(processHandle, signal);
+      const probe = await this.readyProbe(signal);
       if (probe === undefined && version === this.startVersion) { this.started = true; this.runtimeFingerprint = fingerprint; return; }
       lastFailure = probe;
       if (!processHandle.isRunning()) {
@@ -177,6 +190,7 @@ export class WebTransport implements HarnessTransport {
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    if (signal.aborted) throw new HarnessError('DSH Desktop web host start was cancelled.', 'run_interrupted');
     console.warn('[robbot:dsh-web] DSH web host did not become ready before timeout', {
       base,
       timeoutMs: WEB_READY_TIMEOUT_MS,
@@ -193,12 +207,12 @@ export class WebTransport implements HarnessTransport {
 
   private baseUrl(): string { return `http://127.0.0.1:${this.port}`; }
 
-  private async authenticate(processHandle: { getWebAuthUrl: () => string | undefined }): Promise<void> {
+  private async authenticate(processHandle: { getWebAuthUrl: () => string | undefined }, signal?: AbortSignal): Promise<void> {
     const url = processHandle.getWebAuthUrl();
     if (!url) return;
     this.browserLaunchUrl = url;
     try {
-      const response = await fetch(url, { method: 'GET', redirect: 'manual' });
+      const response = await fetch(url, { method: 'GET', redirect: 'manual', signal });
       const cookie = response.headers.get('set-cookie')?.split(';', 1)[0]?.trim();
       if (cookie) this.browserCookie = cookie;
     } catch {
@@ -217,15 +231,15 @@ export class WebTransport implements HarnessTransport {
     }
   }
 
-  private async readyProbe(): Promise<ReadyProbeFailure | undefined> {
+  private async readyProbe(signal?: AbortSignal): Promise<ReadyProbeFailure | undefined> {
     try {
-      await this.callEndpoint('session/list', { args: { _request: {} } });
+      await this.callEndpoint('session/list', { args: { _request: {} } }, signal);
       return undefined;
     } catch (error) {
       const slashFailure = probeFailure('session/list', error);
       if (!shouldTryLegacyEndpoint(error)) return slashFailure;
       try {
-        await this.callLegacyEndpoint('session.list', {});
+        await this.callLegacyEndpoint('session.list', {}, signal);
         return undefined;
       } catch (legacyError) {
         return probeFailure('session.list', legacyError);
@@ -233,18 +247,18 @@ export class WebTransport implements HarnessTransport {
     }
   }
 
-  private async callEndpoint<T>(endpoint: string, payload: unknown): Promise<T> {
+  private async callEndpoint<T>(endpoint: string, payload: unknown, signal?: AbortSignal): Promise<T> {
     const rpcId = randomUUID();
-    const response = await this.postRaw(`${API_CHANNEL}/${endpoint}`, { type: 'client-request', rpcId, method: endpoint, payload });
+    const response = await this.postRaw(`${API_CHANNEL}/${endpoint}`, { type: 'client-request', rpcId, method: endpoint, payload }, signal);
     if (!response.ok) throw new EndpointTransportError(endpoint, `HTTP ${String(response.status)}`);
     const body = await response.json() as RpcEnvelope<T>;
     if (body.rpcId !== rpcId || body.result?.ok !== true) throw new HarnessError(body.result?.error?.message ?? `DSH API call failed: ${endpoint}`, 'protocol_error');
     return body.result.value as T;
   }
 
-  private async callLegacyEndpoint<T>(method: string, payload: unknown): Promise<T> {
+  private async callLegacyEndpoint<T>(method: string, payload: unknown, signal?: AbortSignal): Promise<T> {
     const rpcId = randomUUID();
-    const response = await this.postRaw(`${API_CHANNEL}/${method}`, { type: 'client-request', rpcId, method, payload });
+    const response = await this.postRaw(`${API_CHANNEL}/${method}`, { type: 'client-request', rpcId, method, payload }, signal);
     if (!response.ok) throw new EndpointTransportError(method, `HTTP ${String(response.status)}`);
     const body = await response.json() as RpcEnvelope<T>;
     if (body.rpcId !== rpcId || body.result?.ok !== true) throw new HarnessError(body.result?.error?.message ?? `DSH API call failed: ${method}`, 'protocol_error');
@@ -257,7 +271,7 @@ export class WebTransport implements HarnessTransport {
     return response;
   }
 
-  private async postRaw(pathname: string, body: unknown): Promise<Response> {
+  private async postRaw(pathname: string, body: unknown, signal?: AbortSignal): Promise<Response> {
     return fetch(`${this.baseUrl()}${pathname}`, {
       method: 'POST',
       headers: {
@@ -265,6 +279,7 @@ export class WebTransport implements HarnessTransport {
         ...(this.browserCookie ? { cookie: this.browserCookie } : {}),
       },
       body: JSON.stringify(body),
+      signal,
     });
   }
 

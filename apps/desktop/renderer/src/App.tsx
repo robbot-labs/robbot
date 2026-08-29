@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogOut, Plug, RefreshCw, Settings } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { LoginPage } from './components/auth/LoginPage'
 import { SettingsModal } from './components/home/settingsModal/SettingsModal'
 import { useDesktopUpdateCheck } from './hooks/useDesktopUpdateCheck'
@@ -55,6 +56,7 @@ type DshWebviewElement = HTMLElement & {
 }
 
 function App() {
+  const { t } = useTranslation()
   const windowKind = window.robbot.app.getWindowKind()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [booted, setBooted] = useState(windowKind === 'login')
@@ -67,21 +69,24 @@ function App() {
     void window.robbot.auth.getCurrent().then(setUser).finally(() => setBooted(true))
   }, [windowKind])
 
-  if (!booted) return <div className="grid h-full place-items-center text-sm text-slate-500">Loading...</div>
+  if (!booted) return <div className="grid h-full place-items-center text-sm text-slate-500">{t('common.loading')}</div>
   if (windowKind === 'login') return <LoginPage onDone={() => { window.robbot.app.showMainWindow() }} />
   if (!user) return <LoginRedirect />
   return <AuthenticatedApp user={user} />
 }
 
 function LoginRedirect() {
+  const { t } = useTranslation()
+
   useEffect(() => {
     window.robbot.app.showLoginWindow()
   }, [])
 
-  return <div className="grid h-full place-items-center text-sm text-slate-500">Loading...</div>
+  return <div className="grid h-full place-items-center text-sm text-slate-500">{t('common.loading')}</div>
 }
 
 function AuthenticatedApp({ user }: { user: AuthUser }) {
+  const { t } = useTranslation()
   const [account, setAccount] = useState<AccountRecord | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsInitialTab, setSettingsInitialTab] = useState(0)
@@ -89,6 +94,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   const [viewNonce, setViewNonce] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [visibleTooltip, setVisibleTooltip] = useState<'refresh' | 'logout' | null>(null)
   const [pluginDiagnostics, setPluginDiagnostics] = useState<RuntimePluginDiagnostic[] | null>(null)
   const webviewRef = useRef<DshWebviewElement | null>(null)
   const desktopUpdate = useDesktopUpdateCheck(Boolean(user.id))
@@ -126,8 +132,13 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   }
 
   const logout = async () => {
-    if (!window.confirm('Are you sure you want to sign out?')) return
+    if (!window.confirm(t('app.confirmSignOut'))) return
     await window.robbot.app.logoutAndShowLoginWindow()
+  }
+
+  const reloadDsh = async () => {
+    if (!window.confirm(t('app.confirmReloadDsh'))) return
+    await loadDsh()
   }
 
   const openSettings = (initialTab = 0) => {
@@ -222,31 +233,65 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   }
 
   return (
-    <main className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden bg-white">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-3">
+    <main className="grid h-full min-h-0 grid-rows-[36px_minmax(0,1fr)] overflow-hidden bg-white">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-2.5">
         <div className="flex min-w-0 items-center gap-2">
           {/* <div className="grid h-6 w-6 place-items-center rounded-md bg-slate-950 text-[11px] font-semibold text-white">R</div> */}
-          <div className="truncate text-[13px] font-medium text-slate-700">Robbot — Personal AI powered by DeepSeek Harness</div>
-          {loading ? <div className="status-pulse text-[12px] text-slate-400">Starting DSH...</div> : null}
+          <div className="truncate text-[13px] font-medium text-slate-700">{t('app.title')}</div>
+          {loading ? <div className="status-pulse text-[12px] text-slate-400">{t('app.startingDsh')}</div> : null}
         </div>
         <div className="flex items-center gap-0.5">
-          <button className="flex h-8 items-center rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Runtime Plugins" onClick={() => openSettings(1)}>
-            <Plug className="h-4 w-4" />
-            <span>功能</span>
+          <button className="group flex h-7 cursor-pointer items-center gap-1 rounded-md bg-indigo-50 px-2 text-[12px] font-medium text-indigo-700 transition-colors hover:bg-indigo-100 hover:text-indigo-800" title={t('app.runtimePlugins')} onClick={() => openSettings(1)}>
+            <Plug className="plugin-button-icon h-3.5 w-3.5 transition-transform group-hover:rotate-12" />
+            <span>{t('app.pluginsButton')}</span>
           </button>
-          <button className="relative flex h-8 items-center gap-x-0.5 rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Settings" onClick={() => openSettings(0)}>
-            <Settings className="h-4 w-4" />
-            <span>设置</span>
+          <button className="cursor-pointer relative flex h-7 items-center gap-x-0.5 rounded-md px-1.5 text-[12px] text-slate-500 hover:bg-slate-100" title={t('app.settings')} onClick={() => openSettings(0)}>
+            <Settings className="h-3.5 w-3.5" />
+            <span>{t('app.settings')}</span>
             {desktopUpdate.hasUpdate ? (
-              <span className="absolute right-[1px] top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+              <span className="absolute right-0 top-1 h-2 w-2 rounded-full bg-rose-500" />
             ) : null}
           </button>
-          <button className="flex h-8 items-center rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Reload DSH" onClick={() => void loadDsh()}>
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100" title={account?.email ?? user.email ?? 'Sign out'} onClick={() => void logout()}>
-            <LogOut className="h-4 w-4" />
-          </button>
+          <span
+            className="relative inline-flex"
+            onMouseEnter={() => setVisibleTooltip('refresh')}
+            onMouseLeave={() => setVisibleTooltip(null)}
+          >
+            <button
+              className="flex h-7 cursor-pointer items-center rounded-md px-1.5 text-[12px] text-slate-500 hover:bg-slate-100"
+              title={t('common.refresh')}
+              aria-label={t('common.refresh')}
+              onClick={() => {
+                setVisibleTooltip(null)
+                void reloadDsh()
+              }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <span className={`pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[11px] text-white shadow-sm transition-opacity ${visibleTooltip === 'refresh' ? 'opacity-100' : 'opacity-0'}`}>
+              {t('common.refresh')}
+            </span>
+          </span>
+          <span
+            className="relative inline-flex"
+            onMouseEnter={() => setVisibleTooltip('logout')}
+            onMouseLeave={() => setVisibleTooltip(null)}
+          >
+            <button
+              className="grid h-7 w-7 cursor-pointer place-items-center rounded-md text-slate-500 hover:bg-slate-100"
+              title={t('app.signOut')}
+              aria-label={t('app.signOut')}
+              onClick={() => {
+                setVisibleTooltip(null)
+                void logout()
+              }}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+            <span className={`pointer-events-none absolute right-0 top-full z-50 mt-1 whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-[11px] text-white shadow-sm transition-opacity ${visibleTooltip === 'logout' ? 'opacity-100' : 'opacity-0'}`}>
+              {t('app.signOut')}
+            </span>
+          </span>
         </div>
       </header>
       <section className="relative min-h-0 bg-[#f7f8fa]">
@@ -275,11 +320,11 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
         ) : (
           <div className="grid h-full place-items-center p-6">
             <div className="max-w-md rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-              <div className="font-medium text-slate-950">DSH Desktop is not ready</div>
+              <div className="font-medium text-slate-950">{t('app.dshNotReady')}</div>
               {error ? <pre className="mt-3 whitespace-pre-wrap rounded-md bg-rose-50 p-3 font-sans text-[13px] text-rose-700">{error}</pre> : null}
               <div className="mt-4 flex gap-2">
-                <button className="rounded-md bg-slate-900 px-3 py-2 text-[13px] font-medium text-white" onClick={() => void loadDsh()}>Retry</button>
-                <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={() => openSettings()}>Settings</button>
+                <button className="rounded-md bg-slate-900 px-3 py-2 text-[13px] font-medium text-white" onClick={() => void loadDsh()}>{t('common.retry')}</button>
+                <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={() => openSettings()}>{t('app.settings')}</button>
               </div>
             </div>
           </div>
@@ -312,13 +357,15 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
 }
 
 function DshLoading() {
+  const { t } = useTranslation()
+
   return (
     <div className="grid h-full place-items-center bg-[#f7f8fa] p-6">
       <div className="flex flex-col items-center gap-4 text-center">
         <div className="dsh-spinner" aria-hidden="true" />
         <div>
-          <div className="text-[15px] font-medium text-slate-900">Starting DeepSeek Harness</div>
-          <div className="mt-1 text-[13px] text-slate-500">Preparing your isolated runtime…</div>
+          <div className="text-[15px] font-medium text-slate-900">{t('app.dshLoading.title')}</div>
+          <div className="mt-1 text-[13px] text-slate-500">{t('app.dshLoading.description')}</div>
         </div>
       </div>
     </div>
@@ -331,6 +378,7 @@ function PluginConflictResolver(props: {
   onApply: (owners: Record<string, string>) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation()
   const conflicts = props.diagnostics.filter(isSingleSlotConflict)
   const [selectedOwners, setSelectedOwners] = useState<Record<string, string>>({})
   const owners = Object.fromEntries(conflicts.map((conflict) => {
@@ -345,12 +393,12 @@ function PluginConflictResolver(props: {
     return (
       <div className="grid h-full place-items-center p-6">
         <div className="max-w-lg rounded-lg border border-rose-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-          <div className="font-medium text-slate-950">Runtime plugin configuration is invalid</div>
+          <div className="font-medium text-slate-950">{t('app.pluginConflict.invalidTitle')}</div>
           <pre className="mt-3 whitespace-pre-wrap rounded-md bg-rose-50 p-3 font-sans text-[13px] text-rose-700">
-            {props.diagnostics.map(formatPluginDiagnostic).join('\n')}
+            {props.diagnostics.map((diagnostic) => formatPluginDiagnostic(diagnostic, t)).join('\n')}
           </pre>
           <div className="mt-4 flex gap-2">
-            <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={props.onCancel}>Cancel</button>
+            <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={props.onCancel}>{t('common.cancel')}</button>
           </div>
         </div>
       </div>
@@ -360,9 +408,9 @@ function PluginConflictResolver(props: {
   return (
     <div className="grid h-full place-items-center p-6">
       <div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-        <div className="font-medium text-slate-950">插件界面冲突</div>
+        <div className="font-medium text-slate-950">{t('app.pluginConflict.title')}</div>
         <p className="mt-2 text-[13px] leading-5 text-slate-500">
-          以下插件都会接管 HARNESS 的 single slot。当前每个 slot 只能启用一个 owner，请选择当前使用的界面插件。
+          {t('app.pluginConflict.description')}
         </p>
         <div className="mt-4 space-y-4">
           {conflicts.map((conflict) => (
@@ -386,13 +434,13 @@ function PluginConflictResolver(props: {
           ))}
         </div>
         <div className="mt-5 flex gap-2">
-          <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={props.onCancel}>取消</button>
+          <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={props.onCancel}>{t('common.cancel')}</button>
           <button
             className="rounded-md bg-slate-900 px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
             disabled={props.busy || conflicts.some((conflict) => !owners[conflict.slot])}
             onClick={() => props.onApply(owners)}
           >
-            应用并启动
+            {t('app.pluginConflict.apply')}
           </button>
         </div>
       </div>
@@ -404,17 +452,23 @@ function isSingleSlotConflict(diagnostic: RuntimePluginDiagnostic): diagnostic i
   return diagnostic.type === 'single-slot-conflict'
 }
 
-function formatPluginDiagnostic(diagnostic: RuntimePluginDiagnostic): string {
+function formatPluginDiagnostic(diagnostic: RuntimePluginDiagnostic, t: ReturnType<typeof useTranslation>['t']): string {
   if (diagnostic.type === 'single-slot-conflict') {
-    return `single slot "${diagnostic.slot}" has multiple owners: ${diagnostic.plugins.map((plugin) => plugin.displayName ?? plugin.name).join(', ')}`
+    return t('diagnostics.singleSlotConflict', {
+      slot: diagnostic.slot,
+      owners: diagnostic.plugins.map((plugin) => plugin.displayName ?? plugin.name).join(', '),
+    })
   }
   if (diagnostic.type === 'missing-plugin') {
-    return `enabled plugin is missing: ${diagnostic.plugin.displayName ?? diagnostic.plugin.name}`
+    return t('diagnostics.missingPlugin', { plugin: diagnostic.plugin.displayName ?? diagnostic.plugin.name })
   }
   if (diagnostic.type === 'unknown-slot-registration') {
-    return `unknown slot registration in ${diagnostic.plugin.displayName ?? diagnostic.plugin.name}: ${diagnostic.slot}`
+    return t('diagnostics.unknownSlotRegistration', {
+      plugin: diagnostic.plugin.displayName ?? diagnostic.plugin.name,
+      slot: diagnostic.slot,
+    })
   }
-  return 'Runtime plugin diagnostic'
+  return t('diagnostics.runtimePluginDiagnostic')
 }
 
 export default App

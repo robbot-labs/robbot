@@ -1,0 +1,134 @@
+{
+  "common": {
+    "back": "返回",
+    "cancel": "取消",
+    "close": "关闭",
+    "disabled": "已停用",
+    "enabled": "已启用",
+    "loading": "加载中...",
+    "refresh": "刷新",
+    "retry": "重试",
+    "save": "保存",
+    "saving": "保存中..."
+  },
+  "app": {
+    "title": "Robbot - 由DeepSeek驱动的个人AI",
+    "startingDsh": "正在启动 DSH...",
+    "settings": "设置",
+    "runtimePlugins": "运行时插件",
+    "pluginsButton": "功能",
+    "reloadDsh": "重新加载 DSH",
+    "confirmReloadDsh": "确定要重新加载 DeepSeek Harness 吗？",
+    "signOut": "退出登录",
+    "confirmSignOut": "确定要退出登录吗？",
+    "dshNotReady": "DSH Desktop 尚未就绪",
+    "dshLoading": {
+      "title": "正在启动 DeepSeek Harness",
+      "description": "正在准备隔离运行时..."
+    },
+    "pluginConflict": {
+      "invalidTitle": "运行时插件配置无效",
+      "title": "插件界面冲突",
+      "description": "以下插件都会接管 HARNESS 的 single slot。当前每个 slot 只能启用一个 owner，请选择当前使用的界面插件。",
+      "apply": "应用并启动"
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "账号和 AI 模型",
+    "sectionsLabel": "设置分区",
+    "missingApiKey": "必须配置并选中一个 API key",
+    "tabs": {
+      "model": "模型",
+      "plugins": "功能",
+      "account": "账号",
+      "language": "语言",
+      "version": "版本"
+    },
+    "model": {
+      "title": "模型",
+      "description": "API key 会以密码字段保护。新配置将在下一次发送消息时生效；当前正在运行的任务不会受到影响。",
+      "active": "当前正在使用",
+      "select": "选中",
+      "selecting": "切换中...",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "输入 API key",
+      "hideApiKey": "隐藏 API key",
+      "showApiKey": "显示 API key",
+      "otherConfiguration": "其他配置 (JSON)",
+      "noChanges": "没有修改，无需保存",
+      "saveSuccess": "{{provider}} 配置保存成功",
+      "saveFailed": "保存失败：{{message}}",
+      "missingKey": "请先配置 API key",
+      "invalidJson": "保存失败：请输入有效的 JSON 对象",
+      "jsonObjectRequired": "保存失败：配置必须是 JSON 对象"
+    },
+    "plugins": {
+      "title": "插件",
+      "description": "已安装插件停用后仍会保留。",
+      "runtimeTitle": "运行时插件",
+      "runtimeDescription": "冲突插件单选，普通插件可多选启用。",
+      "loadFailed": "插件列表加载失败：{{message}}",
+      "toggleFailed": "插件切换失败：{{message}}",
+      "enabled": "{{name}} 已启用",
+      "disabled": "{{name}} 已停用",
+      "ownerSelected": "{{name}} 已选为 {{slot}} owner",
+      "ownerNone": "{{slot}} owner 已设为 NONE",
+      "stillConflicts": "{{message}}，但当前插件配置仍有冲突",
+      "reloadingHarness": "{{message}}，正在重新加载 HARNESS",
+      "conflictTitle": "当前插件配置存在冲突",
+      "loading": "正在加载插件...",
+      "empty": "未声明运行时插件。",
+      "noneDescription": "不启用任何 {{slot}} owner UI 插件",
+      "nonConflicting": "非冲突插件",
+      "notDeclared": "未在 manifest 中声明",
+      "source": "来源：{{source}}",
+      "disablePlugin": "停用 {{name}}",
+      "enablePlugin": "启用 {{name}}"
+    },
+    "account": {
+      "title": "账号",
+      "description": "你的 Robbot 账号",
+      "email": "邮箱",
+      "signOut": "退出登录"
+    },
+    "language": {
+      "title": "语言",
+      "description": "选择 Robbot 的显示语言",
+      "chinese": "中文",
+      "english": "English"
+    },
+    "version": {
+      "title": "版本",
+      "description": "桌面应用更新",
+      "desktopUpdate": "桌面应用更新",
+      "currentVersion": "当前版本 {{version}} - {{platform}}/{{arch}}",
+      "checking": "检查中...",
+      "checkUpdate": "检查更新",
+      "latest": "你正在使用最新版本。",
+      "available": "发现新版本：{{version}}",
+      "required": "必须更新",
+      "downloadInstaller": "下载安装包",
+      "downloadOpenFailed": "打开下载链接失败：{{message}}",
+      "rsshubTest": "RSSHub 测试",
+      "rsshubDescription": "请求 RSSHub 最新缓存接口",
+      "testing": "测试中...",
+      "requestFailed": "{{label}} 请求失败：{{message}}",
+      "requestSuccess": "{{label}} 请求成功：{{count}} 条{{stale}}",
+      "staleCache": "，返回旧缓存",
+      "requestPath": "请求 {{path}}",
+      "sources": {
+        "weiboHot": "测试微博热搜",
+        "aibaseNews": "测试 AIBase 新闻",
+        "kr36AiInformation": "测试 36Kr AI"
+      }
+    }
+  },
+  "diagnostics": {
+    "singleSlotConflict": "single slot \"{{slot}}\" 有多个 owner：{{owners}}",
+    "missingPlugin": "启用的插件缺失：{{plugin}}",
+    "unknownSlotRegistration": "{{plugin}} 中存在未知 slot 注册：{{slot}}",
+    "invalidUiRegistration": "{{plugin}} 中存在无效 UI 注册：{{message}}",
+    "runtimePluginDiagnostic": "运行时插件诊断"
+  }
+}

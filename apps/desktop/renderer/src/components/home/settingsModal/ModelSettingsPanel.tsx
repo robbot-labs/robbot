@@ -1,7 +1,12 @@
 import { useState } from 'react'
 import { FormControl, MenuItem, OutlinedInput, Select } from '@mui/material'
+import type { TFunction } from 'i18next'
 import { Check, Eye, EyeOff } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { SettingsButton } from '../../common/SettingsButton'
+import { SubmitButton } from '../../common/SubmitButton'
+import { readAiConfigKey } from './aiConfig'
 
 export type AiField = 'deepseek' | 'openai'
 
@@ -27,6 +32,7 @@ const fields: Array<{ field: AiField; label: string }> = [
 ]
 
 export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
+  const { t } = useTranslation()
   const [configs, setConfigs] = useState<Record<AiField, string>>(() => ({
     deepseek: formatJson(props.deepseek, emptyDeepseekConfig),
     openai: formatJson(props.openai, emptyChatgptConfig),
@@ -60,13 +66,13 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
   }
 
   const save = async (field: AiField) => {
-    const nextValue = nextConfigValue(field, configs, keys, selectedModels)
+    const nextValue = nextConfigValue(field, configs, keys, selectedModels, t)
     if (!nextValue) {
       return
     }
 
     if (stableStringify(nextValue) === stableStringify(initialValues[field])) {
-      toast.info('没有修改，无需保存')
+      toast.info(t('settings.model.noChanges'), { duration: 1000 })
       return
     }
 
@@ -74,9 +80,9 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
 
     try {
       await props.onSave(field, nextValue)
-      toast.success(`${field === 'deepseek' ? 'DeepSeek' : 'ChatGPT'} 配置保存成功`)
+      toast.success(t('settings.model.saveSuccess', { provider: field === 'deepseek' ? 'DeepSeek' : 'ChatGPT' }), { duration: 1000 })
     } catch (cause) {
-      toast.error(`保存失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      toast.error(t('settings.model.saveFailed', { message: cause instanceof Error ? cause.message : String(cause) }))
     } finally {
       setSaving(null)
     }
@@ -84,11 +90,11 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
 
   const select = async (field: AiField) => {
     if (!keys[field].trim()) {
-      toast.warning('请先配置 API key')
+      toast.warning(t('settings.model.missingKey'), { duration: 1000 })
       return
     }
 
-    const nextValue = nextConfigValue(field, configs, keys, selectedModels)
+    const nextValue = nextConfigValue(field, configs, keys, selectedModels, t)
     if (!nextValue) {
       return
     }
@@ -98,7 +104,7 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
     try {
       if (stableStringify(nextValue) !== stableStringify(initialValues[field])) {
         await props.onSave(field, nextValue)
-        toast.success(`${field === 'deepseek' ? 'DeepSeek' : 'ChatGPT'} 配置保存成功`)
+        toast.success(t('settings.model.saveSuccess', { provider: field === 'deepseek' ? 'DeepSeek' : 'ChatGPT' }), { duration: 1000 })
       } else {
         await props.onSelect(field)
       }
@@ -109,11 +115,8 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
 
   return (
     <div className="p-6">
-      <h3 className="m-0 text-base font-semibold text-slate-950">Model</h3>
-      <p className="mt-1 text-sm text-slate-500">
-        API key is protected in a password field.
-        新配置将在下一次发送消息时生效；当前正在运行的任务不会受到影响。
-      </p>
+      <h3 className="m-0 text-base font-semibold text-slate-950">{t('settings.model.title')}</h3>
+      <p className="mt-1 text-sm text-slate-500">{t('settings.model.description')}</p>
 
       <div className="mt-6 grid gap-5">
         {fields.map(({ field, label }) => {
@@ -127,20 +130,19 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
                 {active ? (
                   <span className="flex items-center gap-1 text-xs font-medium text-emerald-600">
                     <Check className="h-3.5 w-3.5" />
-                    当前正在使用
+                    {t('settings.model.active')}
                   </span>
                 ) : (
-                  <button
+                  <SettingsButton
                     disabled={selecting !== null}
-                    className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     onClick={() => void select(field)}
                   >
-                    {selecting === field ? '切换中…' : '选中'}
-                  </button>
+                    {selecting === field ? t('settings.model.selecting') : t('settings.model.select')}
+                  </SettingsButton>
                 )}
               </div>
 
-              <label className="mt-3 block text-xs font-medium text-slate-600">API key</label>
+              <label className="mt-3 block text-xs font-medium text-slate-600">{t('settings.model.apiKey')}</label>
               <div className="relative mt-1">
                 <input
                   type={showKeys[field] ? 'text' : 'password'}
@@ -152,26 +154,25 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
                     }))
                   }
                   className="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 text-sm outline-none focus:border-emerald-500"
-                  placeholder="Enter API key"
+                  placeholder={t('settings.model.apiKeyPlaceholder')}
                   autoComplete="new-password"
                 />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600"
+                <SettingsButton
+                  iconOnly
                   onClick={() =>
                     setShowKeys((current) => ({
                       ...current,
                       [field]: !current[field],
                     }))
                   }
-                  aria-label={showKeys[field] ? 'Hide API key' : 'Show API key'}
-                  title={showKeys[field] ? 'Hide API key' : 'Show API key'}
+                  aria-label={showKeys[field] ? t('settings.model.hideApiKey') : t('settings.model.showApiKey')}
+                  title={showKeys[field] ? t('settings.model.hideApiKey') : t('settings.model.showApiKey')}
                 >
                   {showKeys[field] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                </SettingsButton>
               </div>
 
-              <label className="mt-3 block text-xs font-medium text-slate-600">Model</label>
+              <label className="mt-3 block text-xs font-medium text-slate-600">{t('settings.model.title')}</label>
               <FormControl fullWidth size="small" className="mt-1">
                 <Select
                   value={selectedModels[field]}
@@ -203,7 +204,7 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
 
               {field === 'openai' ? (
                 <>
-                  <label className="mt-3 block text-xs font-medium text-slate-600">Other configuration (JSON)</label>
+                  <label className="mt-3 block text-xs font-medium text-slate-600">{t('settings.model.otherConfiguration')}</label>
                   <textarea
                     value={configs[field]}
                     onChange={(event) =>
@@ -219,13 +220,12 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
               ) : null}
 
               <div className="mt-3 flex justify-end">
-                <button
+                <SubmitButton
                   disabled={saving !== null}
-                  className="rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                   onClick={() => void save(field)}
                 >
-                  {saving === field ? '保存中…' : '保存'}
-                </button>
+                  {saving === field ? t('common.saving') : t('common.save')}
+                </SubmitButton>
               </div>
             </div>
           )
@@ -235,18 +235,18 @@ export function ModelSettingsPanel(props: ModelSettingsPanelProps) {
   )
 }
 
-function nextConfigValue(field: AiField, configs: Record<AiField, string>, keys: Record<AiField, string>, selectedModels: Record<AiField, string>): Record<string, unknown> | null {
+function nextConfigValue(field: AiField, configs: Record<AiField, string>, keys: Record<AiField, string>, selectedModels: Record<AiField, string>, t: TFunction): Record<string, unknown> | null {
   let value: Record<string, unknown>
 
   try {
     value = JSON.parse(configs[field]) as Record<string, unknown>
   } catch {
-    toast.error('保存失败：请输入有效的 JSON 对象')
+    toast.error(t('settings.model.invalidJson'))
     return null
   }
 
   if (!value || Array.isArray(value) || typeof value !== 'object') {
-    toast.error('保存失败：配置必须是 JSON 对象')
+    toast.error(t('settings.model.jsonObjectRequired'))
     return null
   }
 
@@ -304,18 +304,6 @@ function formatJson(raw: string | null, emptyValue: string): string {
     return JSON.stringify(value, null, 2)
   } catch {
     return raw
-  }
-}
-
-export function readAiConfigKey(raw: string | null): string {
-  if (!raw) return ''
-
-  try {
-    const value = JSON.parse(raw) as Record<string, unknown>
-
-    return typeof value.key === 'string' ? value.key : ''
-  } catch {
-    return ''
   }
 }
 
