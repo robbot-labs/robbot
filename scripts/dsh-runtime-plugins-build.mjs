@@ -17,7 +17,15 @@ function run(command, args, options = {}) {
   console.log(`[robbot:dsh-runtime-plugin] ${label}${options.cwd ? ` (${path.relative(repoRoot, options.cwd)})` : ''}`);
   const result = spawnSync(command, args, {
     cwd: options.cwd,
-    env: { ...process.env, CI: 'true', COREPACK_HOME: corepackHome },
+    env: {
+      ...process.env,
+      CI: 'true',
+      COREPACK_HOME: corepackHome,
+      PATH: [
+        ...(options.binPaths ?? []),
+        process.env.PATH,
+      ].filter(Boolean).join(path.delimiter),
+    },
     shell: process.platform === 'win32',
     stdio: 'inherit',
   });
@@ -27,6 +35,31 @@ function run(command, args, options = {}) {
   }
   if (result.status !== 0) {
     throw new Error(`${label} failed with exit ${String(result.status)}`);
+  }
+}
+
+function runShell(script, options = {}) {
+  console.log(`[robbot:dsh-runtime-plugin] ${script}${options.cwd ? ` (${path.relative(repoRoot, options.cwd)})` : ''}`);
+  const result = spawnSync(script, {
+    cwd: options.cwd,
+    env: {
+      ...process.env,
+      CI: 'true',
+      COREPACK_HOME: corepackHome,
+      PATH: [
+        ...(options.binPaths ?? []),
+        process.env.PATH,
+      ].filter(Boolean).join(path.delimiter),
+    },
+    shell: true,
+    stdio: 'inherit',
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`${script} failed with exit ${String(result.status)}`);
   }
 }
 
@@ -63,9 +96,24 @@ function localRuntimePluginDirectories() {
     .filter(Boolean);
 }
 
-function installPackage(packageDir) {
+function installPackage(packageDir, options = {}) {
   const lockfilePath = path.join(packageDir, 'pnpm-lock.yaml');
-  run(pnpmCommand, fs.existsSync(lockfilePath) ? ['install', '--frozen-lockfile'] : ['install'], { cwd: packageDir });
+  const args = ['install'];
+  if (options.ignoreWorkspace === true) {
+    args.push('--ignore-workspace');
+  }
+  if (fs.existsSync(lockfilePath)) {
+    args.push('--frozen-lockfile');
+  }
+  run(pnpmCommand, args, { cwd: packageDir });
+}
+
+function runtimePluginBuildBinPaths(packageDir) {
+  return [
+    path.join(packageDir, 'node_modules', '.bin'),
+    path.join(runtimePluginsRoot, 'node_modules', '.bin'),
+    path.join(repoRoot, 'node_modules', '.bin'),
+  ];
 }
 
 if (!fs.existsSync(runtimePluginsManifestPath)) {
@@ -82,12 +130,12 @@ if (pluginDirectories.length === 0) {
 }
 
 for (const { packageName, packageDir } of pluginDirectories) {
-  installPackage(packageDir);
+  installPackage(packageDir, { ignoreWorkspace: true });
   const manifest = readPackageJson(packageDir);
   if (typeof manifest.scripts?.build !== 'string') {
     console.log(`[robbot:dsh-runtime-plugin] ${packageName} has no build script`);
     continue;
   }
 
-  run(pnpmCommand, ['run', 'build'], { cwd: packageDir });
+  runShell(manifest.scripts.build, { cwd: packageDir, binPaths: runtimePluginBuildBinPaths(packageDir) });
 }
