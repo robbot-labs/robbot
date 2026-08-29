@@ -143,6 +143,17 @@ export function registerIpcHandlers(services: RuntimeServices): void {
   });
 
   ipcMain.handle('harness:get-status', () => services.harness.getStatus());
+  ipcMain.handle('harness:resolve-runtime-plugins', () => services.harness.resolveRuntimePlugins());
+  ipcMain.handle('harness:get-runtime-plugins', () => services.harness.getRuntimePlugins());
+  ipcMain.handle('harness:set-runtime-plugin-enabled', (_event, input: { name: string; enabled: boolean }) =>
+    services.harness.setRuntimePluginEnabled(input),
+  );
+  ipcMain.handle('harness:set-runtime-plugins-enabled', (_event, input: { updates: Array<{ name: string; enabled: boolean }> }) =>
+    services.harness.setRuntimePluginsEnabled(input),
+  );
+  ipcMain.handle('harness:apply-runtime-plugin-resolution', (_event, input: { owners: Record<string, string> }) =>
+    services.harness.applyRuntimePluginResolution(input),
+  );
   ipcMain.handle('harness:get-current-web-url', () => services.harness.getWebUrlForAccount(services.auth.requireCurrentUser().id));
   ipcMain.handle('harness:list-active-runs', () => services.harness.getActiveRuns());
   ipcMain.handle('harness:warmup-runtime', (_event, input: HarnessWarmupInput) => services.harness.warmup({ ...input, accountId: requireCurrentAccountId(services, input.accountId) }));

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { formatRuntimePluginDiagnostics, resolveRuntimePluginPlan } from './lib/runtime-plugin-plan.mjs';
 
 const repoRoot = process.cwd();
 
@@ -75,6 +76,14 @@ await check('Level 2 Client bundle has no unmaterialized dynamic requires', () =
     throw new Error(`${path.relative(repoRoot, clientPath)} leaks dynamic require(s): ${[...new Set(dynamicRequires)].join(', ')}`);
   }
   return path.relative(repoRoot, clientPath);
+});
+
+await check('Runtime plugin plan is valid', () => {
+  const result = resolveRuntimePluginPlan({ repoRoot, strictWarnings: true });
+  if (!result.ok) {
+    throw new Error(formatRuntimePluginDiagnostics(result.diagnostics));
+  }
+  return `${result.plan.enabledPluginNames.length} enabled plugin(s), ${result.diagnostics.length} warning(s)`;
 });
 
 await check('Plugin manifest entry is declared', () => {

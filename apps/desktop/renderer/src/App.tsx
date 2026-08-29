@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { LogOut, RefreshCw, Settings } from 'lucide-react'
 import { LoginPage } from './components/auth/LoginPage'
-import { SettingsModal } from './components/home/SettingsModal'
+import { SettingsModal } from './components/home/settingsModal/SettingsModal'
 import { useDesktopUpdateCheck } from './hooks/useDesktopUpdateCheck'
-import type { AccountRecord, AuthUser, DshWebViewTarget } from './robbot-api'
+import type { AccountRecord, AuthUser, DshWebViewTarget, RuntimePluginDiagnostic, SingleSlotConflict } from './robbot-api'
 import './App.css'
 
 const DSH_BRAND_CSS = `
@@ -88,6 +88,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   const [viewNonce, setViewNonce] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [pluginDiagnostics, setPluginDiagnostics] = useState<RuntimePluginDiagnostic[] | null>(null)
   const webviewRef = useRef<DshWebviewElement | null>(null)
   const desktopUpdate = useDesktopUpdateCheck(Boolean(user.id))
 
@@ -100,7 +101,14 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
     setViewNonce((value) => value + 1)
     setLoading(true)
     setError('')
+    setPluginDiagnostics(null)
     try {
+      const pluginPlan = await window.robbot.harness.resolveRuntimePlugins()
+      if (!pluginPlan.ok) {
+        setPluginDiagnostics(pluginPlan.diagnostics)
+        setDshTarget(null)
+        return
+      }
       const target = await window.robbot.harness.getCurrentWebUrl()
       setDshTarget(target)
     } catch (cause) {
@@ -123,11 +131,20 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   useEffect(() => {
     let cancelled = false
 
-    void window.robbot.harness.getCurrentWebUrl()
-      .then((target) => {
+    void (async () => {
+      try {
+        const pluginPlan = await window.robbot.harness.resolveRuntimePlugins()
+        if (!pluginPlan.ok) {
+          if (!cancelled) {
+            setPluginDiagnostics(pluginPlan.diagnostics)
+            setDshTarget(null)
+          }
+          return
+        }
+
+        const target = await window.robbot.harness.getCurrentWebUrl()
         if (!cancelled) setDshTarget(target)
-      })
-      .catch((cause) => {
+      } catch (cause) {
         if (cancelled) return
         const message = cause instanceof Error ? cause.message : String(cause)
         setDshTarget(null)
@@ -135,10 +152,10 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
         if (/API key is missing/i.test(message)) {
           setSettingsOpen(true)
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    })()
 
     return () => {
       cancelled = true
@@ -178,6 +195,24 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
     await loadDsh()
   }
 
+  const applyPluginResolution = async (owners: Record<string, string>) => {
+    setLoading(true)
+    setError('')
+    try {
+      const result = await window.robbot.harness.applyRuntimePluginResolution({ owners })
+      if (!result.ok) {
+        setPluginDiagnostics(result.diagnostics)
+        return
+      }
+      setPluginDiagnostics(null)
+      await loadDsh()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <>
       <main className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden bg-white">
@@ -203,7 +238,14 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
           </div>
         </header>
         <section className="relative min-h-0 bg-[#f7f8fa]">
-          {dshTarget ? (
+          {pluginDiagnostics ? (
+            <PluginConflictResolver
+              diagnostics={pluginDiagnostics}
+              busy={loading}
+              onApply={(owners) => { void applyPluginResolution(owners) }}
+              onCancel={() => setPluginDiagnostics(null)}
+            />
+          ) : dshTarget ? (
             <webview
               ref={(node) => {
                 webviewRef.current = node as DshWebviewElement | null
@@ -246,6 +288,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
                 onClose={() => setSettingsOpen(false)}
                 onSave={saveSettings}
                 onSelect={selectAi}
+                onRuntimePluginsChanged={loadDsh}
                 onLogout={() => { setSettingsOpen(false); void logout() }}
               />
             </div>
@@ -268,6 +311,97 @@ function DshLoading() {
       </div>
     </div>
   )
+}
+
+function PluginConflictResolver(props: {
+  diagnostics: RuntimePluginDiagnostic[];
+  busy: boolean;
+  onApply: (owners: Record<string, string>) => void;
+  onCancel: () => void;
+}) {
+  const conflicts = props.diagnostics.filter(isSingleSlotConflict)
+  const [owners, setOwners] = useState<Record<string, string>>(() =>
+    Object.fromEntries(conflicts.map((conflict) => [conflict.slot, conflict.plugins[0]?.name ?? ''])),
+  )
+
+  useEffect(() => {
+    setOwners(Object.fromEntries(conflicts.map((conflict) => [conflict.slot, conflict.plugins[0]?.name ?? ''])))
+  }, [props.diagnostics])
+
+  if (conflicts.length === 0) {
+    return (
+      <div className="grid h-full place-items-center p-6">
+        <div className="max-w-lg rounded-lg border border-rose-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+          <div className="font-medium text-slate-950">Runtime plugin configuration is invalid</div>
+          <pre className="mt-3 whitespace-pre-wrap rounded-md bg-rose-50 p-3 font-sans text-[13px] text-rose-700">
+            {props.diagnostics.map(formatPluginDiagnostic).join('\n')}
+          </pre>
+          <div className="mt-4 flex gap-2">
+            <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={props.onCancel}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid h-full place-items-center p-6">
+      <div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+        <div className="font-medium text-slate-950">插件界面冲突</div>
+        <p className="mt-2 text-[13px] leading-5 text-slate-500">
+          以下插件都会接管 HARNESS 的 single slot。当前每个 slot 只能启用一个 owner，请选择当前使用的界面插件。
+        </p>
+        <div className="mt-4 space-y-4">
+          {conflicts.map((conflict) => (
+            <fieldset key={conflict.slot} className="rounded-md border border-slate-200 p-3">
+              <legend className="px-1 text-[12px] font-medium uppercase tracking-wide text-slate-500">{conflict.slot}</legend>
+              <div className="mt-2 space-y-2">
+                {conflict.plugins.map((plugin) => (
+                  <label key={plugin.name} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-slate-50">
+                    <input
+                      type="radio"
+                      name={`runtime-plugin-owner-${conflict.slot}`}
+                      checked={owners[conflict.slot] === plugin.name}
+                      onChange={() => setOwners((value) => ({ ...value, [conflict.slot]: plugin.name }))}
+                    />
+                    <span className="text-[13px] text-slate-800">{plugin.displayName ?? plugin.name}</span>
+                    {plugin.displayName ? <span className="text-[12px] text-slate-400">{plugin.name}</span> : null}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={props.onCancel}>取消</button>
+          <button
+            className="rounded-md bg-slate-900 px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
+            disabled={props.busy || conflicts.some((conflict) => !owners[conflict.slot])}
+            onClick={() => props.onApply(owners)}
+          >
+            应用并启动
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function isSingleSlotConflict(diagnostic: RuntimePluginDiagnostic): diagnostic is SingleSlotConflict {
+  return diagnostic.type === 'single-slot-conflict'
+}
+
+function formatPluginDiagnostic(diagnostic: RuntimePluginDiagnostic): string {
+  if (diagnostic.type === 'single-slot-conflict') {
+    return `single slot "${diagnostic.slot}" has multiple owners: ${diagnostic.plugins.map((plugin) => plugin.displayName ?? plugin.name).join(', ')}`
+  }
+  if (diagnostic.type === 'missing-plugin') {
+    return `enabled plugin is missing: ${diagnostic.plugin.displayName ?? diagnostic.plugin.name}`
+  }
+  if (diagnostic.type === 'unknown-slot-registration') {
+    return `unknown slot registration in ${diagnostic.plugin.displayName ?? diagnostic.plugin.name}: ${diagnostic.slot}`
+  }
+  return 'Runtime plugin diagnostic'
 }
 
 export default App

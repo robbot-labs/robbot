@@ -398,7 +398,7 @@ function isCurrentDshRuntimeBundle(runtimePath) {
   try {
     const marker = JSON.parse(fsSync.readFileSync(path.join(runtimePath, 'robbot-runtime.json'), 'utf8'));
     return marker?.kind === 'robbot-dsh-runtime'
-      && marker?.layoutVersion === 3
+      && marker?.layoutVersion === 4
       && isCurrentRuntimePluginManifest(runtimePath);
   } catch {
     return false;

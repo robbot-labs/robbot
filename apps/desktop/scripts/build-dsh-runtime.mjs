@@ -9,7 +9,7 @@ const repoRoot = path.resolve(appDir, '../..');
 const dshRoot = path.join(repoRoot, 'vendor', 'deepseek-harness');
 const runtimePluginsRoot = path.join(repoRoot, 'runtime-plugins');
 const outputDir = path.resolve(process.argv[2] ?? path.join(appDir, '.runtime', 'dsh'));
-const runtimeLayoutVersion = 3;
+const runtimeLayoutVersion = 4;
 const currentNativeTag = `${process.platform}-${process.arch}`;
 
 function exists(relativePath) {
@@ -355,6 +355,7 @@ function buildFlatRuntime() {
   fs.writeFileSync(path.join(outputDir, 'package.json'), `${JSON.stringify(cliManifest, null, 2)}\n`);
   copyPackageDirectory(cliPath, outputDir, { keepSrc: packageUsesSrcAtRuntime(cliPath, cliManifest) });
   copyRuntimePluginManifest();
+  copyRuntimePluginResolver();
 
   const seen = new Set();
   for (const packageName of Object.keys({
@@ -388,6 +389,17 @@ function copyRuntimePluginManifest() {
   }
 
   fs.copyFileSync(manifestPath, path.join(outputDir, 'manifest.json'));
+}
+
+function copyRuntimePluginResolver() {
+  const resolverPath = path.join(repoRoot, 'scripts', 'lib', 'runtime-plugin-plan.mjs');
+  if (!fs.existsSync(resolverPath)) {
+    throw new Error(`missing runtime plugin resolver: ${resolverPath}`);
+  }
+
+  const targetPath = path.join(outputDir, 'scripts', 'lib', 'runtime-plugin-plan.mjs');
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.copyFileSync(resolverPath, targetPath);
 }
 
 function runtimePluginPackageNames() {

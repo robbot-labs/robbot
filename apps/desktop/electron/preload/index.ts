@@ -63,6 +63,11 @@ contextBridge.exposeInMainWorld('robbot', {
   },
   harness: {
     getStatus: () => ipcRenderer.invoke('harness:get-status'),
+    resolveRuntimePlugins: () => ipcRenderer.invoke('harness:resolve-runtime-plugins'),
+    getRuntimePlugins: () => ipcRenderer.invoke('harness:get-runtime-plugins'),
+    setRuntimePluginEnabled: (input: unknown) => ipcRenderer.invoke('harness:set-runtime-plugin-enabled', input),
+    setRuntimePluginsEnabled: (input: unknown) => ipcRenderer.invoke('harness:set-runtime-plugins-enabled', input),
+    applyRuntimePluginResolution: (input: unknown) => ipcRenderer.invoke('harness:apply-runtime-plugin-resolution', input),
     getCurrentWebUrl: () => ipcRenderer.invoke('harness:get-current-web-url'),
     listActiveRuns: () => ipcRenderer.invoke('harness:list-active-runs'),
     warmupRuntime: (input: unknown) => ipcRenderer.invoke('harness:warmup-runtime', input),

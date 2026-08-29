@@ -63,6 +63,104 @@ export interface DshWebViewTarget {
   fingerprint: string;
 }
 
+export type RuntimePluginPlanResult =
+  | {
+      ok: true;
+      plan: ResolvedRuntimePluginPlan;
+      diagnostics: RuntimePluginWarning[];
+    }
+  | {
+      ok: false;
+      diagnostics: RuntimePluginDiagnostic[];
+    };
+
+export interface RuntimePluginSettingsResult {
+  plugins: RuntimePluginManifestEntry[];
+  resolution: RuntimePluginPlanResult;
+}
+
+export interface RuntimePluginManifestEntry {
+  name: string;
+  enabled: boolean;
+  source?: string;
+  id?: string;
+  config?: unknown;
+}
+
+export interface ResolvedRuntimePluginPlan {
+  runtimePluginsRoot: string;
+  manifestPath: string;
+  packageManifestPath: string;
+  nodeModulesPath: string;
+  managedPluginNames: string[];
+  enabledPluginNames: string[];
+  plugins: ResolvedRuntimePlugin[];
+}
+
+export interface ResolvedRuntimePlugin {
+  name: string;
+  id: string;
+  enabled: boolean;
+  source?: string;
+  displayName?: string;
+  registrations: RuntimePluginUiRegistration[];
+}
+
+export interface RuntimePluginUiRegistration {
+  slot: string;
+  role: 'owner' | 'contribution';
+}
+
+export type RuntimePluginDiagnostic = RuntimePluginConflict | RuntimePluginWarning;
+
+export type RuntimePluginConflict =
+  | SingleSlotConflict
+  | MissingPluginConflict
+  | PluginDependencyConflict
+  | IncompatiblePluginVersionConflict;
+
+export interface SingleSlotConflict {
+  kind: 'conflict';
+  type: 'single-slot-conflict';
+  slot: string;
+  plugins: Array<{ name: string; displayName?: string }>;
+}
+
+export interface MissingPluginConflict {
+  kind: 'conflict';
+  type: 'missing-plugin';
+  plugin: { name: string; displayName?: string };
+  expectedPath: string;
+}
+
+export interface PluginDependencyConflict {
+  kind: 'conflict';
+  type: 'plugin-dependency-conflict';
+  message: string;
+}
+
+export interface IncompatiblePluginVersionConflict {
+  kind: 'conflict';
+  type: 'incompatible-plugin-version';
+  message: string;
+}
+
+export type RuntimePluginWarning = UnknownSlotRegistrationWarning | InvalidUiRegistrationWarning;
+
+export interface UnknownSlotRegistrationWarning {
+  kind: 'warning';
+  type: 'unknown-slot-registration';
+  plugin: { name: string; displayName?: string };
+  slot: string;
+}
+
+export interface InvalidUiRegistrationWarning {
+  kind: 'warning';
+  type: 'invalid-ui-registration';
+  plugin: { name: string; displayName?: string };
+  message: string;
+}
+
 export interface HarnessRunInput {
   accountId: string;
   workspaceId: string;
@@ -259,6 +357,11 @@ export interface RobbotApi {
   };
   harness: {
     getStatus: () => Promise<HarnessRuntimeStatus>;
+    resolveRuntimePlugins: () => Promise<RuntimePluginPlanResult>;
+    getRuntimePlugins: () => Promise<RuntimePluginSettingsResult>;
+    setRuntimePluginEnabled: (input: { name: string; enabled: boolean }) => Promise<RuntimePluginSettingsResult>;
+    setRuntimePluginsEnabled: (input: { updates: Array<{ name: string; enabled: boolean }> }) => Promise<RuntimePluginSettingsResult>;
+    applyRuntimePluginResolution: (input: { owners: Record<string, string> }) => Promise<RuntimePluginPlanResult>;
     getCurrentWebUrl: () => Promise<DshWebViewTarget>;
     listActiveRuns: () => Promise<Record<string, ActiveRunRef>>;
     warmupRuntime: (input: HarnessWarmupInput) => Promise<void>;

@@ -1,28 +1,15 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { formatRuntimePluginDiagnostics, resolveRuntimePluginPlan } from './lib/runtime-plugin-plan.mjs';
 
 const repoRoot = process.cwd();
-const requestedPackageName = process.argv.slice(2).find((value) => !value.startsWith('--'));
 const bestEffort = process.argv.includes('--best-effort');
 const webPatchPath = path.join(repoRoot, 'config', 'dsh-web.cordis.patch.yml');
 const runtimePluginsPackagePath = path.join(repoRoot, 'runtime-plugins', 'package.json');
 const runtimePluginsManifestPath = path.join(repoRoot, 'runtime-plugins', 'manifest.json');
 const runtimePluginNodeModules = path.join(repoRoot, 'runtime-plugins', 'node_modules');
-const enabledPlugins = requestedPackageName === undefined
-  ? readEnabledPlugins(runtimePluginsManifestPath)
-  : [{ name: requestedPackageName, config: {} }];
-const enabledPluginNames = enabledPlugins.map((plugin) => plugin.name);
-const runtimePluginNames = uniqueStrings([
-  ...runtimePluginPackageNames(runtimePluginsPackagePath),
-  ...readRuntimePlugins(runtimePluginsManifestPath).map((plugin) => plugin.name),
-]);
-const unmanagedEnabledPluginNames = enabledPluginNames.filter((pluginName) => !runtimePluginNames.includes(pluginName));
 const baseWebPatch = readFileSync(webPatchPath, 'utf8');
-
-const selectedPluginNames = requestedPackageName === undefined
-  ? enabledPluginNames
-  : [requestedPackageName];
 
 if (!existsSync(webPatchPath)) {
   throw new Error(`missing Web patch: ${path.relative(repoRoot, webPatchPath)}`);
@@ -33,17 +20,21 @@ if (!existsSync(runtimePluginsPackagePath)) {
 if (!existsSync(runtimePluginsManifestPath)) {
   throw new Error(`missing runtime plugin enablement manifest: ${path.relative(repoRoot, runtimePluginsManifestPath)}`);
 }
+
+const planResult = resolveRuntimePluginPlan({ repoRoot });
+if (!planResult.ok) {
+  console.error(formatRuntimePluginDiagnostics(planResult.diagnostics));
+  process.exit(1);
+}
+for (const diagnostic of planResult.diagnostics) {
+  console.warn(`[robbot:dsh-plugin] ${formatRuntimePluginDiagnostics([diagnostic])}`);
+}
+
+const runtimePluginNames = planResult.plan.managedPluginNames;
+const enabledPluginNames = planResult.plan.enabledPluginNames;
+
 if (enabledPluginNames.length === 0) {
   console.log('[robbot:dsh-plugin] no enabled runtime plugins');
-}
-if (unmanagedEnabledPluginNames.length > 0) {
-  throw new Error(`enabled plugin(s) are missing from runtime-plugins/package.json: ${unmanagedEnabledPluginNames.join(', ')}`);
-}
-for (const pluginName of selectedPluginNames) {
-  const packagePath = path.join(runtimePluginNodeModules, pluginName);
-  if (!existsSync(packagePath)) {
-    throw new Error(`missing runtime plugin package: ${path.relative(repoRoot, packagePath)}`);
-  }
 }
 
 const targets = [
@@ -122,31 +113,6 @@ function syncDshHome({ dshHome, linkPackages }) {
       linkPackage(path.join(dshHome, 'profiles', 'node_modules', pluginName), path.join(runtimePluginNodeModules, pluginName));
     }
   }
-}
-
-function readEnabledPlugins(manifestPath) {
-  return readRuntimePlugins(manifestPath).filter((plugin) => plugin.enabled);
-}
-
-function readRuntimePlugins(manifestPath) {
-  const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const plugins = Array.isArray(parsed?.plugins) ? parsed.plugins : [];
-  return plugins
-    .filter((plugin) => plugin && typeof plugin === 'object' && typeof plugin.name === 'string')
-    .map((plugin) => ({
-      name: plugin.name,
-      id: typeof plugin.id === 'string' ? plugin.id : plugin.name,
-      enabled: plugin.enabled === true,
-      config: plugin.config && typeof plugin.config === 'object' && !Array.isArray(plugin.config) ? plugin.config : {},
-    }));
-}
-
-function runtimePluginPackageNames(manifestPath) {
-  const parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  return [
-    ...Object.keys(parsed.dependencies ?? {}),
-    ...Object.keys(parsed.optionalDependencies ?? {}),
-  ];
 }
 
 function readManifest(manifestPath) {

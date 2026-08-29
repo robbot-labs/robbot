@@ -1,6 +1,9 @@
 import { DshLocalHarness, DshRuntimeManager, type DshRuntimeStatus } from '@robbot/dsh-adapter';
 import type { ApprovalInput, HarnessCapabilities, HarnessEvent, HarnessRunMode } from '@robbot/core';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { AccountRecord, AccountRepository, MessageRepository, SessionEventRepository, SessionRepository, WorkspaceRepository } from '../../storage/repositories';
 import type { AccountDshEnvironmentService, AccountDshEnvironment } from './account-dsh-environment-service';
 
@@ -8,6 +11,11 @@ export interface HarnessRuntimeStatus { status: DshRuntimeStatus; runtimeRoot: s
 export interface HarnessRunInput { accountId: string; workspaceId: string; sessionId: string; prompt: string; runMode?: HarnessRunMode }
 export interface HarnessWarmupInput { accountId: string; workspaceId: string; runMode?: HarnessRunMode }
 export interface HarnessRunStartResult { runId: string; userMessageId: string; assistantMessageId: string; harnessSessionId: string; runMode: HarnessRunMode }
+export interface RuntimePluginResolutionInput { owners: Record<string, string> }
+export interface RuntimePluginEnablementInput { name: string; enabled: boolean }
+export interface RuntimePluginEnablementBatchInput { updates: RuntimePluginEnablementInput[] }
+export interface RuntimePluginManifestEntry { name: string; enabled: boolean; source?: string; id?: string; config?: unknown }
+export interface RuntimePluginSettingsResult { plugins: RuntimePluginManifestEntry[]; resolution: unknown }
 export interface HarnessLogEntry { at: string; source: 'renderer' | 'main' | 'harness' | 'dsh'; message: string; data?: Record<string, unknown> }
 export type HarnessLogSink = (entry: HarnessLogEntry) => void;
 export type HarnessEventSink = (event: HarnessUiEvent) => void;
@@ -44,6 +52,99 @@ export class HarnessService {
       const run = this.runs.get(runId);
       return run ? [[sessionId, { ...run.ref }]] : [];
     }));
+  }
+
+  async resolveRuntimePlugins(): Promise<unknown> {
+    return resolveRuntimePluginPlanForRuntime(this.runtimeManager.resolveRuntime().root);
+  }
+
+  async getRuntimePlugins(): Promise<RuntimePluginSettingsResult> {
+    const runtimeRoot = this.runtimeManager.resolveRuntime().root;
+    const runtimePluginsRoot = resolveRuntimePluginsRoot(runtimeRoot);
+    return {
+      plugins: readRuntimePluginManifestEntries(path.join(runtimePluginsRoot, 'manifest.json')),
+      resolution: await resolveRuntimePluginPlanForRuntime(runtimeRoot),
+    };
+  }
+
+  async setRuntimePluginEnabled(input: RuntimePluginEnablementInput): Promise<RuntimePluginSettingsResult> {
+    return this.setRuntimePluginsEnabled({ updates: [input] });
+  }
+
+  async setRuntimePluginsEnabled(input: RuntimePluginEnablementBatchInput): Promise<RuntimePluginSettingsResult> {
+    const updates = Array.isArray(input.updates) ? input.updates : [];
+    if (updates.length === 0) {
+      return this.getRuntimePlugins();
+    }
+    for (const update of updates) {
+      if (!update.name.trim()) {
+        throw new Error('Plugin name is required.');
+      }
+    }
+
+    const runtimeRoot = this.runtimeManager.resolveRuntime().root;
+    const runtimePluginsRoot = resolveRuntimePluginsRoot(runtimeRoot);
+    const manifestPath = path.join(runtimePluginsRoot, 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { plugins?: Array<Record<string, unknown>> };
+    const plugins = Array.isArray(manifest.plugins) ? manifest.plugins : [];
+    const updateByName = new Map(updates.map((update) => [update.name, update.enabled]));
+    const found = new Set<string>();
+    const nextPlugins = plugins.map((plugin) => {
+      const name = typeof plugin.name === 'string' ? plugin.name : undefined;
+      if (!name || !updateByName.has(name)) {
+        return plugin;
+      }
+      found.add(name);
+      return { ...plugin, enabled: updateByName.get(name) };
+    });
+
+    const missing = [...updateByName.keys()].filter((name) => !found.has(name));
+    if (missing.length > 0) {
+      throw new Error(`Runtime plugin is not declared: ${missing.join(', ')}`);
+    }
+
+    fs.writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, plugins: nextPlugins }, null, 2)}\n`);
+    return this.getRuntimePlugins();
+  }
+
+  async applyRuntimePluginResolution(input: RuntimePluginResolutionInput): Promise<unknown> {
+    const runtimeRoot = this.runtimeManager.resolveRuntime().root;
+    const runtimePluginsRoot = resolveRuntimePluginsRoot(runtimeRoot);
+    const manifestPath = path.join(runtimePluginsRoot, 'manifest.json');
+    const before = await resolveRuntimePluginPlanForRuntime(runtimeRoot);
+    if (!isPlanConflictResult(before)) {
+      return before;
+    }
+
+    const selectedOwners = input.owners && typeof input.owners === 'object' ? input.owners : {};
+    const pluginsToDisable = new Set<string>();
+    for (const diagnostic of before.diagnostics) {
+      if (!isSingleSlotConflict(diagnostic)) {
+        continue;
+      }
+      const selected = selectedOwners[diagnostic.slot];
+      if (!selected || !diagnostic.plugins.some((plugin) => plugin.name === selected)) {
+        throw new Error(`Select a plugin owner for ${diagnostic.slot}.`);
+      }
+      for (const plugin of diagnostic.plugins) {
+        if (plugin.name !== selected) {
+          pluginsToDisable.add(plugin.name);
+        }
+      }
+    }
+
+    if (pluginsToDisable.size === 0) {
+      return before;
+    }
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { plugins?: Array<Record<string, unknown>> };
+    const plugins = Array.isArray(manifest.plugins) ? manifest.plugins : [];
+    const nextPlugins = plugins.map((plugin) => {
+      const name = typeof plugin.name === 'string' ? plugin.name : undefined;
+      return name && pluginsToDisable.has(name) ? { ...plugin, enabled: false } : plugin;
+    });
+    fs.writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, plugins: nextPlugins }, null, 2)}\n`);
+    return resolveRuntimePluginPlanForRuntime(runtimeRoot);
   }
 
   async warmup(input: HarnessWarmupInput): Promise<void> {
@@ -217,3 +318,87 @@ export class HarnessService {
 }
 
 function normalizeRunMode(value: unknown, fallback: HarnessRunMode): HarnessRunMode { return value === 'acp' || value === 'web' || value === 'sdk' ? value : fallback }
+
+function readRuntimePluginManifestEntries(manifestPath: string): RuntimePluginManifestEntry[] {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as { plugins?: Array<Record<string, unknown>> };
+    const plugins = Array.isArray(parsed.plugins) ? parsed.plugins : [];
+    return plugins
+      .filter((plugin): plugin is Record<string, unknown> & { name: string } => typeof plugin.name === 'string')
+      .map((plugin) => ({
+        name: plugin.name,
+        enabled: plugin.enabled === true,
+        ...(typeof plugin.source === 'string' ? { source: plugin.source } : {}),
+        ...(typeof plugin.id === 'string' ? { id: plugin.id } : {}),
+        ...(plugin.config !== undefined ? { config: plugin.config } : {}),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function resolveRuntimePluginPlanForRuntime(runtimeRoot: string): Promise<unknown> {
+  const runtimePluginsRoot = resolveRuntimePluginsRoot(runtimeRoot);
+  const resolverPath = resolveRuntimePluginPlanModulePath(runtimeRoot);
+  if (!resolverPath) {
+    throw new Error('Runtime plugin resolver is missing; cannot validate plugin configuration.');
+  }
+  const module = await import(pathToFileURL(resolverPath).href) as {
+    resolveRuntimePluginPlan: (input: { runtimePluginsRoot: string }) => unknown;
+  };
+  return module.resolveRuntimePluginPlan({ runtimePluginsRoot });
+}
+
+function resolveRuntimePluginsRoot(runtimeRoot: string): string {
+  const appRoot = findRobbotRoot(runtimeRoot);
+  for (const candidate of [
+    path.join(appRoot, 'runtime-plugins'),
+    runtimeRoot,
+  ]) {
+    if (fs.existsSync(path.join(candidate, 'manifest.json'))) {
+      return candidate;
+    }
+  }
+  return path.join(appRoot, 'runtime-plugins');
+}
+
+function resolveRuntimePluginPlanModulePath(runtimeRoot: string): string | undefined {
+  for (const candidate of [
+    path.join(runtimeRoot, 'scripts', 'lib', 'runtime-plugin-plan.mjs'),
+    path.join(findRobbotRoot(runtimeRoot), 'scripts', 'lib', 'runtime-plugin-plan.mjs'),
+    path.resolve(process.cwd(), 'scripts', 'lib', 'runtime-plugin-plan.mjs'),
+  ]) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function findRobbotRoot(start: string): string {
+  let current = path.resolve(start);
+  while (true) {
+    if (fs.existsSync(path.join(current, 'config', 'dsh-runtime.json'))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(start);
+    }
+    current = parent;
+  }
+}
+
+function isPlanConflictResult(value: unknown): value is { ok: false; diagnostics: unknown[] } {
+  return Boolean(value && typeof value === 'object' && (value as { ok?: unknown }).ok === false && Array.isArray((value as { diagnostics?: unknown }).diagnostics));
+}
+
+function isSingleSlotConflict(value: unknown): value is { type: 'single-slot-conflict'; slot: string; plugins: Array<{ name: string; displayName?: string }> } {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && (value as { type?: unknown }).type === 'single-slot-conflict'
+    && typeof (value as { slot?: unknown }).slot === 'string'
+    && Array.isArray((value as { plugins?: unknown }).plugins),
+  );
+}

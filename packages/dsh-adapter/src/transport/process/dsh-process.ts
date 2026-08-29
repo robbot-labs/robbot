@@ -1,12 +1,18 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { HarnessError } from '@robbot/core';
 
 import { StdioChannel } from './stdio-channel.js';
 
 export type DshProcessProtocol = 'sdk' | 'acp' | 'web';
+
+interface RuntimePluginMaterializationPlan {
+  managedPluginNames: string[];
+  enabledPluginNames: string[];
+}
 
 export class DshProcess {
   private child?: ChildProcessWithoutNullStreams;
@@ -73,16 +79,19 @@ export class DshProcess {
     if (shouldRunElectronAsNode(nodeExecutable)) {
       launchEnv.ELECTRON_RUN_AS_NODE = '1';
     }
+    const runtimePluginPlan = this.protocol === 'web'
+      ? await resolveValidRuntimePluginPlan(this.cwd, launchEnv)
+      : undefined;
     const dshHome = (launchEnv as Record<string, string | undefined>).DSH_HOME;
     if (this.protocol === 'web' && dshHome) {
-      syncWebProfileBundles(this.cwd, dshHome, launchEnv);
+      syncWebProfileBundles(this.cwd, dshHome, launchEnv, runtimePluginPlan);
       const patchPath = resolveConfigPath(this.cwd, this.configPath);
       const profilePatchPath = path.join(dshHome, 'profiles', 'web', 'cordis.patch.yml');
       mkdirSync(path.dirname(profilePatchPath), { recursive: true });
-      writeFileSync(profilePatchPath, webProfilePatch(patchPath, this.cwd, launchEnv));
+      writeFileSync(profilePatchPath, webProfilePatch(patchPath, this.cwd, launchEnv, runtimePluginPlan));
       console.info('[robbot:dsh-process] projected web profile patch', { profilePatchPath });
     }
-    ensureRuntimePluginResolution(this.cwd, this.configPath, launchEnv);
+    ensureRuntimePluginResolution(this.cwd, this.configPath, launchEnv, runtimePluginPlan);
     console.info('[robbot:dsh-process] launch env summary', summarizeLaunchEnv(launchEnv));
 
     this.child = spawn(nodeExecutable, args, {
@@ -191,6 +200,7 @@ function ensureRuntimePluginResolution(
   dshRoot: string,
   configPath: string,
   env: Record<string, string | undefined>,
+  plan?: RuntimePluginMaterializationPlan,
 ): void {
   const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
   if (!pluginNodeModules) {
@@ -205,7 +215,10 @@ function ensureRuntimePluginResolution(
     linkRuntimePluginPackages(
       path.join(dshHome, 'profiles', 'node_modules'),
       pluginNodeModules,
-      path.resolve(pluginNodeModules, '..', 'package.json'),
+      plan?.managedPluginNames ?? runtimePluginPackageNames(
+        path.resolve(pluginNodeModules, '..', 'package.json'),
+        path.resolve(pluginNodeModules, '..', 'manifest.json'),
+      ),
     );
   }
 }
@@ -245,6 +258,59 @@ function configSearchRoots(dshRoot: string): string[] {
     }
   }
   return roots;
+}
+
+async function resolveValidRuntimePluginPlan(
+  dshRoot: string,
+  env: Record<string, string | undefined>,
+): Promise<RuntimePluginMaterializationPlan | undefined> {
+  const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
+  if (!pluginNodeModules) {
+    return undefined;
+  }
+
+  const runtimePluginsRoot = path.resolve(pluginNodeModules, '..');
+  const resolverPath = resolveRuntimePluginPlanModulePath(dshRoot);
+  if (!resolverPath) {
+    throw new HarnessError(
+      'Runtime plugin resolver is missing; refusing to start DSH with raw runtime plugin manifest.',
+      'transport_error',
+    );
+  }
+
+  const module = await import(pathToFileURL(resolverPath).href) as {
+    assertValidRuntimePluginPlan: (input: { runtimePluginsRoot: string }) => { plan: RuntimePluginMaterializationPlan };
+    formatRuntimePluginDiagnostics?: (diagnostics: unknown[]) => string;
+  };
+  const result = module.assertValidRuntimePluginPlan({ runtimePluginsRoot });
+  return result.plan;
+}
+
+function resolveRuntimePluginPlanModulePath(dshRoot: string): string | undefined {
+  for (const candidate of [
+    path.join(dshRoot, 'scripts', 'lib', 'runtime-plugin-plan.mjs'),
+    path.join(findRobbotRoot(dshRoot), 'scripts', 'lib', 'runtime-plugin-plan.mjs'),
+    path.resolve(process.cwd(), 'scripts', 'lib', 'runtime-plugin-plan.mjs'),
+  ]) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function findRobbotRoot(start: string): string {
+  let current = path.resolve(start);
+  while (true) {
+    if (existsSync(path.join(current, 'config', 'dsh-runtime.json'))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(start);
+    }
+    current = parent;
+  }
 }
 
 function resolveRuntimePluginNodeModules(
@@ -303,9 +369,7 @@ function linkNodeModules(linkPath: string, targetPath: string, label: string): v
   }
 }
 
-function linkRuntimePluginPackages(modulesDir: string, pluginNodeModules: string, runtimePluginsManifestPath: string): void {
-  const runtimePluginsRoot = path.dirname(runtimePluginsManifestPath);
-  const packageNames = runtimePluginPackageNames(runtimePluginsManifestPath, path.join(runtimePluginsRoot, 'manifest.json'));
+function linkRuntimePluginPackages(modulesDir: string, pluginNodeModules: string, packageNames: string[]): void {
   mkdirSync(modulesDir, { recursive: true });
   for (const packageName of packageNames) {
     const targetPath = path.join(pluginNodeModules, packageName);
@@ -393,16 +457,17 @@ function webProfilePatch(
   basePatchPath: string,
   dshRoot: string,
   env: Record<string, string | undefined>,
+  plan?: RuntimePluginMaterializationPlan,
 ): string {
   const basePatch = readFileSync(basePatchPath, 'utf8').trimEnd();
   const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
   const runtimePluginsRoot = pluginNodeModules ? path.resolve(pluginNodeModules, '..') : undefined;
-  const managedPluginPackages = runtimePluginsRoot
+  const managedPluginPackages = plan?.managedPluginNames ?? (runtimePluginsRoot
     ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'), path.join(runtimePluginsRoot, 'manifest.json'))
-    : [];
-  const enabledPluginPackages = runtimePluginsRoot
+    : []);
+  const enabledPluginPackages = plan?.enabledPluginNames ?? (runtimePluginsRoot
     ? enabledRuntimePluginPackageNames(path.join(runtimePluginsRoot, 'manifest.json'))
-    : [];
+    : []);
   let patch = stripPatchRowsById(basePatch, managedPluginPackages);
   if (enabledPluginPackages.length === 0) {
     patch = stripPatchRowsById(patch, ['ui-sidebar']);
@@ -410,19 +475,24 @@ function webProfilePatch(
   return normalizePatchList(patch);
 }
 
-function syncWebProfileBundles(dshRoot: string, dshHome: string, env: Record<string, string | undefined>): void {
+function syncWebProfileBundles(
+  dshRoot: string,
+  dshHome: string,
+  env: Record<string, string | undefined>,
+  plan?: RuntimePluginMaterializationPlan,
+): void {
   const profileDir = path.join(dshHome, 'profiles', 'web');
   const manifestPath = path.join(profileDir, 'package.json');
   mkdirSync(profileDir, { recursive: true });
 
   const pluginNodeModules = resolveRuntimePluginNodeModules(dshRoot, env);
   const runtimePluginsRoot = pluginNodeModules ? path.resolve(pluginNodeModules, '..') : undefined;
-  const installedPluginPackages = runtimePluginsRoot
+  const installedPluginPackages = plan?.managedPluginNames ?? (runtimePluginsRoot
     ? runtimePluginPackageNames(path.join(runtimePluginsRoot, 'package.json'), path.join(runtimePluginsRoot, 'manifest.json'))
-    : [];
-  const enabledPluginPackages = runtimePluginsRoot
+    : []);
+  const enabledPluginPackages = plan?.enabledPluginNames ?? (runtimePluginsRoot
     ? enabledRuntimePluginPackageNames(path.join(runtimePluginsRoot, 'manifest.json'))
-    : [];
+    : []);
   const manifest = readWebProfileManifest(manifestPath);
   const baseBundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'];
   const existingBundles = Array.isArray(manifest.dsh?.profile?.bundles)
