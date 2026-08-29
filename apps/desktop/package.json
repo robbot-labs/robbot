@@ -1,7 +1,7 @@
 {
   "name": "@robbot/desktop",
   "productName": "Robbot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "dist-electron/main/index.js",
   "scripts": {
     "predev": "pnpm --dir ../.. dsh:plugin:sync-profiles:best-effort",
