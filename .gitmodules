@@ -11,3 +11,9 @@
 [submodule "vendor/dsh-plugin-template"]
 	path = vendor/dsh-plugin-template
 	url = https://github.com/robbot-labs/dsh-plugin-template.git
+[submodule "vendor/dsh-plugin-base"]
+	path = vendor/dsh-plugin-base
+	url = https://github.com/robbot-labs/dsh-plugin-base.git
+[submodule "vendor/dsh-plugin-noui"]
+path = vendor/dsh-plugin-noui
+	url = https://github.com/robbot-labs/dsh-plugin-noui.git

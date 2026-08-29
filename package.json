@@ -2,7 +2,7 @@
   "name": "robbot",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@10.0.0",
+  "packageManager": "pnpm@10.16.1",
   "scripts": {
     "dev": "node scripts/with-runtime-node.mjs pnpm --filter @robbot/desktop dev",
     "build": "pnpm -r build",

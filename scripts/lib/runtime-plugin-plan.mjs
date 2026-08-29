@@ -8,6 +8,7 @@ export const ROBBOT_SLOT_DEFINITIONS = Object.freeze({
   'workspace-root': { cardinality: 'single' },
   'settings-root': { cardinality: 'single' },
   'sidebar.items': { cardinality: 'multiple' },
+  'settings.plugin.item': { cardinality: 'multiple' },
   commands: { cardinality: 'multiple' },
   pages: { cardinality: 'multiple' },
   panels: { cardinality: 'multiple' },

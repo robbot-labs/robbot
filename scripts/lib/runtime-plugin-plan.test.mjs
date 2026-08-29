@@ -57,6 +57,27 @@ test('dedupes repeated registrations from the same plugin', () => {
   }
 });
 
+test('allows multiple settings plugin item contributions', () => {
+  const root = fixture({
+    manifest: [
+      { name: 'plugin-a', enabled: true },
+      { name: 'plugin-b', enabled: true },
+    ],
+    packages: {
+      'plugin-a': [{ slot: 'settings.plugin.item', role: 'contribution' }],
+      'plugin-b': [{ slot: 'settings.plugin.item', role: 'contribution' }],
+    },
+  });
+
+  try {
+    const result = resolveRuntimePluginPlan({ runtimePluginsRoot: root, strictWarnings: true });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.diagnostics, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('warns on unknown slots and strict mode rejects warnings', () => {
   const root = fixture({
     manifest: [{ name: 'plugin-a', enabled: true }],

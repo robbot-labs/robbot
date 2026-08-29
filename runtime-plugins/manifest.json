@@ -11,6 +11,16 @@
       "source": "dsh-native"
     },
     {
+      "name": "dsh-plugin-base",
+      "enabled": true,
+      "source": "dsh-native"
+    },
+    {
+      "name": "dsh-plugin-noui",
+      "enabled": true,
+      "source": "dsh-native"
+    },
+    {
       "name": "dsh-video-creator",
       "enabled": false,
       "source": "dsh-native"

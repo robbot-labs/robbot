@@ -14,6 +14,12 @@ importers:
       dsh-plugin-template:
         specifier: link:../vendor/dsh-plugin-template
         version: link:../vendor/dsh-plugin-template
+      dsh-plugin-base:
+        specifier: link:../vendor/dsh-plugin-base
+        version: link:../vendor/dsh-plugin-base
+      dsh-plugin-noui:
+        specifier: link:../vendor/dsh-plugin-noui
+        version: link:../vendor/dsh-plugin-noui
       dsh-video-creator:
         specifier: link:../vendor/dsh-video-creator
         version: link:../vendor/dsh-video-creator

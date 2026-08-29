@@ -24,6 +24,10 @@ if (!existsSync(runtimePluginsManifestPath)) {
 const planResult = resolveRuntimePluginPlan({ repoRoot });
 if (!planResult.ok) {
   console.error(formatRuntimePluginDiagnostics(planResult.diagnostics));
+  if (bestEffort && isLauncherRepairablePlan(planResult.diagnostics)) {
+    console.warn('[robbot:dsh-plugin] skipped profile sync; desktop launcher will ask the user to resolve plugin UI ownership.');
+    process.exit(0);
+  }
   process.exit(1);
 }
 for (const diagnostic of planResult.diagnostics) {
@@ -72,6 +76,11 @@ function accountDshHomes(productName) {
   return readdirNames(accountsRoot)
     .map((name) => path.join(accountsRoot, name))
     .filter((candidate) => isDirectory(candidate));
+}
+
+function isLauncherRepairablePlan(diagnostics) {
+  return diagnostics.length > 0
+    && diagnostics.every((diagnostic) => diagnostic.type === 'single-slot-conflict');
 }
 
 function syncDshHome({ dshHome, linkPackages }) {
