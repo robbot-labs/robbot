@@ -238,7 +238,43 @@ function packageDirectoryExists(packageDir) {
   return fs.existsSync(path.join(packageDir, 'package.json'));
 }
 
+function localRuntimePluginPackageDirectory(packageName) {
+  const manifestPath = path.join(runtimePluginsRoot, 'package.json');
+  if (!fs.existsSync(manifestPath)) {
+    return undefined;
+  }
+
+  const manifest = packageManifest(runtimePluginsRoot);
+  const spec = {
+    ...manifest.dependencies,
+    ...manifest.optionalDependencies,
+    ...manifest.peerDependencies,
+  }[packageName];
+
+  if (typeof spec !== 'string') {
+    return undefined;
+  }
+
+  const localPrefixes = ['link:', 'file:'];
+  const prefix = localPrefixes.find(value => spec.startsWith(value));
+  if (!prefix) {
+    return undefined;
+  }
+
+  const packageDir = path.resolve(runtimePluginsRoot, spec.slice(prefix.length));
+  if (!packageDirectoryExists(packageDir)) {
+    throw new Error(`Unable to resolve local DSH runtime plugin ${packageName} from ${spec}`);
+  }
+
+  return fs.realpathSync(packageDir);
+}
+
 function resolvePackageDirectory(packageName) {
+  const localRuntimePluginPackageDir = localRuntimePluginPackageDirectory(packageName);
+  if (localRuntimePluginPackageDir) {
+    return localRuntimePluginPackageDir;
+  }
+
   for (const nodeModulesRoot of runtimeNodeModulesRoots()) {
     const directPath = path.join(nodeModulesRoot, ...packageParts(packageName));
     if (packageDirectoryExists(directPath)) {
