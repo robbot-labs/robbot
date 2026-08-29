@@ -238,7 +238,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
             <Settings className="h-4 w-4" />
             <span>设置</span>
             {desktopUpdate.hasUpdate ? (
-              <span className="absolute right-[2px] top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+              <span className="absolute right-[1px] top-1.5 h-2 w-2 rounded-full bg-rose-500" />
             ) : null}
           </button>
           <button className="flex h-8 items-center rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Reload DSH" onClick={() => void loadDsh()}>
