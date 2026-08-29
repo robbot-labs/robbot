@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { accessSync, constants, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -212,14 +212,16 @@ function ensureRuntimePluginResolution(
 
   const dshHome = env.DSH_HOME;
   if (dshHome) {
-    linkRuntimePluginPackages(
-      path.join(dshHome, 'profiles', 'node_modules'),
-      pluginNodeModules,
-      plan?.managedPluginNames ?? runtimePluginPackageNames(
-        path.resolve(pluginNodeModules, '..', 'package.json'),
-        path.resolve(pluginNodeModules, '..', 'manifest.json'),
-      ),
+    const packageNames = plan?.managedPluginNames ?? runtimePluginPackageNames(
+      path.resolve(pluginNodeModules, '..', 'package.json'),
+      path.resolve(pluginNodeModules, '..', 'manifest.json'),
     );
+    for (const modulesDir of [
+      path.join(dshHome, 'profiles', 'node_modules'),
+      path.join(dshHome, 'profiles', 'web', 'node_modules'),
+    ]) {
+      linkRuntimePluginPackages(modulesDir, pluginNodeModules, packageNames);
+    }
   }
 }
 
@@ -333,14 +335,14 @@ function resolveRuntimePluginNodeModules(
   return undefined;
 }
 
-function linkNodeModules(linkPath: string, targetPath: string, label: string): void {
+function linkNodeModules(linkPath: string, targetPath: string, label: string): boolean {
   try {
     if (existsSync(linkPath)) {
       const existing = lstatSync(linkPath);
       if (existing.isSymbolicLink()) {
-        const currentTarget = path.resolve(path.dirname(linkPath), readlinkSync(linkPath));
-        if (currentTarget === targetPath && existsSync(currentTarget)) {
-          return;
+        const currentTarget = normalizeLinkTarget(path.dirname(linkPath), readlinkSync(linkPath));
+        if (currentTarget === normalizeExistingPath(targetPath) && existsSync(currentTarget)) {
+          return true;
         }
         unlinkSync(linkPath);
       } else {
@@ -348,17 +350,18 @@ function linkNodeModules(linkPath: string, targetPath: string, label: string): v
           label,
           linkPath,
         });
-        return;
+        return false;
       }
     }
 
     mkdirSync(path.dirname(linkPath), { recursive: true });
-    symlinkSync(targetPath, linkPath, 'dir');
+    symlinkSync(targetPath, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
     console.info('[robbot:dsh-process] linked runtime plugin node_modules', {
       label,
       linkPath,
       targetPath,
     });
+    return true;
   } catch (error) {
     console.warn('[robbot:dsh-process] failed to link runtime plugin node_modules', {
       label,
@@ -366,6 +369,7 @@ function linkNodeModules(linkPath: string, targetPath: string, label: string): v
       targetPath,
       error: error instanceof Error ? error.message : String(error),
     });
+    return false;
   }
 }
 
@@ -380,8 +384,48 @@ function linkRuntimePluginPackages(modulesDir: string, pluginNodeModules: string
       });
       continue;
     }
-    linkNodeModules(path.join(modulesDir, packageName), targetPath, `profile:${packageName}`);
+    const linked = linkNodeModules(path.join(modulesDir, packageName), targetPath, `profile:${packageName}`);
+    if (!linked && shouldCopyRuntimePluginFallback()) {
+      copyRuntimePluginPackage(path.join(modulesDir, packageName), targetPath, packageName);
+    }
   }
+}
+
+function shouldCopyRuntimePluginFallback(): boolean {
+  return process.platform === 'win32' && isPackagedDshRuntime();
+}
+
+function copyRuntimePluginPackage(packagePath: string, targetPath: string, packageName: string): void {
+  try {
+    if (existsSync(packagePath)) {
+      rmSync(packagePath, { force: true, recursive: true });
+    }
+    mkdirSync(path.dirname(packagePath), { recursive: true });
+    cpSync(targetPath, packagePath, {
+      dereference: true,
+      recursive: true,
+    });
+    console.info('[robbot:dsh-process] copied runtime plugin package fallback', {
+      packageName,
+      packagePath,
+      targetPath,
+    });
+  } catch (error) {
+    console.warn('[robbot:dsh-process] failed to copy runtime plugin package fallback', {
+      packageName,
+      packagePath,
+      targetPath,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function normalizeLinkTarget(linkParent: string, target: string): string {
+  return normalizeExistingPath(path.isAbsolute(target) ? target : path.resolve(linkParent, target));
+}
+
+function normalizeExistingPath(value: string): string {
+  return path.resolve(value).replace(/^\\\\\?\\/, '');
 }
 
 function runtimePluginPackageNames(packageManifestPath: string, runtimePluginsManifestPath?: string): string[] {
