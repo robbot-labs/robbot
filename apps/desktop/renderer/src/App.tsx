@@ -237,7 +237,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-2.5">
         <div className="flex min-w-0 items-center gap-2">
           {/* <div className="grid h-6 w-6 place-items-center rounded-md bg-slate-950 text-[11px] font-semibold text-white">R</div> */}
-          <div className="truncate text-[13px] font-medium text-slate-700">{t('app.title')}</div>
+          <div className="truncate bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500 bg-clip-text text-[13px] font-semibold text-transparent">{t('app.title')}</div>
           {loading ? <div className="status-pulse text-[12px] text-slate-400">{t('app.startingDsh')}</div> : null}
         </div>
         <div className="flex items-center gap-0.5">

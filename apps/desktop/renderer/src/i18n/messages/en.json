@@ -34,7 +34,6 @@
   },
   "settings": {
     "title": "Settings",
-    "subtitle": "Account and AI models",
     "sectionsLabel": "Settings sections",
     "missingApiKey": "You must configure and select an API key",
     "tabs": {

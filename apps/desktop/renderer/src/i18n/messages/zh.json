@@ -35,7 +35,6 @@
   },
   "settings": {
     "title": "设置",
-    "subtitle": "账号和 AI 模型",
     "sectionsLabel": "设置分区",
     "missingApiKey": "必须配置并选中一个 API key",
     "tabs": {

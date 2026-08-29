@@ -82,7 +82,6 @@ export function SettingsModal(props: SettingsModalProps) {
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
         <div>
           <h2 className="m-0 text-lg font-semibold text-slate-950">{t('settings.title')}</h2>
-          <p className="m-0 mt-1 text-xs text-slate-500">{t('settings.subtitle')}</p>
         </div>
         <SettingsButton
           onClick={close}
