@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Box, FormControl, MenuItem, OutlinedInput, Select, Tab, Tabs } from '@mui/material'
-import { Check, Download, LogOut, RefreshCw, X } from 'lucide-react'
+import { Check, Download, Eye, EyeOff, LogOut, RefreshCw, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { UpdateCheckState } from '../../hooks/useDesktopUpdateCheck'
 import { get36KrAiInformation, getAibaseNews, getWeiboHot } from '../../services/api'
@@ -98,6 +98,10 @@ export function SettingsModal(props: SettingsModalProps) {
     deepseek: readStringValue(props.deepseek, 'model') || 'deepseek-v4-pro',
     openai: readStringValue(props.openai, 'model') || 'gpt-5.6-luna',
   }))
+  const [showKeys, setShowKeys] = useState<Record<AiField, boolean>>({
+    deepseek: false,
+    openai: false,
+  })
   const [saving, setSaving] = useState<AiField | null>(null)
   const [selecting, setSelecting] = useState<AiField | null>(null)
   const [testingRsshubSource, setTestingRsshubSource] = useState<RsshubTestSource | null>(null)
@@ -394,19 +398,35 @@ export function SettingsModal(props: SettingsModalProps) {
                     <label className="mt-3 block text-xs font-medium text-slate-600">
                       API key
                     </label>
-                    <input
-                      type="password"
-                      value={keys[field]}
-                      onChange={(event) =>
-                        setKeys((current) => ({
-                          ...current,
-                          [field]: event.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-                      placeholder="Enter API key"
-                      autoComplete="new-password"
-                    />
+                    <div className="relative mt-1">
+                      <input
+                        type={showKeys[field] ? 'text' : 'password'}
+                        value={keys[field]}
+                        onChange={(event) =>
+                          setKeys((current) => ({
+                            ...current,
+                            [field]: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 pr-10 text-sm outline-none focus:border-emerald-500"
+                        placeholder="Enter API key"
+                        autoComplete="new-password"
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600"
+                        onClick={() =>
+                          setShowKeys((current) => ({
+                            ...current,
+                            [field]: !current[field],
+                          }))
+                        }
+                        aria-label={showKeys[field] ? 'Hide API key' : 'Show API key'}
+                        title={showKeys[field] ? 'Hide API key' : 'Show API key'}
+                      >
+                        {showKeys[field] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
 
                     <label className="mt-3 block text-xs font-medium text-slate-600">Model</label>
                     <FormControl fullWidth size="small" className="mt-1">
