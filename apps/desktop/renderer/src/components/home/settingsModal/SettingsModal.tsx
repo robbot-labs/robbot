@@ -11,6 +11,7 @@ import { VersionSettingsPanel } from './VersionSettingsPanel'
 type SettingsModalProps = {
   open: boolean
   variant?: 'modal' | 'page'
+  initialTab?: number
   email: string
   deepseek: string | null
   openai: string | null
@@ -47,7 +48,7 @@ function TabPanel(props: { value: number; index: number; children: React.ReactNo
 }
 
 export function SettingsModal(props: SettingsModalProps) {
-  const [tab, setTab] = useState(0)
+  const [tab, setTab] = useState(props.initialTab ?? 0)
 
   if (!props.open) return null
 

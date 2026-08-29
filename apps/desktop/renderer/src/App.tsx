@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LogOut, RefreshCw, Settings } from 'lucide-react'
+import { LogOut, Plug, RefreshCw, Settings } from 'lucide-react'
 import { LoginPage } from './components/auth/LoginPage'
 import { SettingsModal } from './components/home/settingsModal/SettingsModal'
 import { useDesktopUpdateCheck } from './hooks/useDesktopUpdateCheck'
@@ -84,6 +84,7 @@ function LoginRedirect() {
 function AuthenticatedApp({ user }: { user: AuthUser }) {
   const [account, setAccount] = useState<AccountRecord | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsInitialTab, setSettingsInitialTab] = useState(0)
   const [dshTarget, setDshTarget] = useState<DshWebViewTarget | null>(null)
   const [viewNonce, setViewNonce] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -116,6 +117,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
       setDshTarget(null)
       setError(message)
       if (/API key is missing/i.test(message)) {
+        setSettingsInitialTab(0)
         setSettingsOpen(true)
       }
     } finally {
@@ -126,6 +128,11 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   const logout = async () => {
     if (!window.confirm('Are you sure you want to sign out?')) return
     await window.robbot.app.logoutAndShowLoginWindow()
+  }
+
+  const openSettings = (initialTab = 0) => {
+    setSettingsInitialTab(initialTab)
+    setSettingsOpen(true)
   }
 
   useEffect(() => {
@@ -150,6 +157,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
         setDshTarget(null)
         setError(message)
         if (/API key is missing/i.test(message)) {
+          setSettingsInitialTab(0)
           setSettingsOpen(true)
         }
       } finally {
@@ -214,88 +222,92 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
   }
 
   return (
-    <>
-      <main className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden bg-white">
-        <header className="flex items-center justify-between border-b border-slate-200 bg-white px-3">
-          <div className="flex min-w-0 items-center gap-2">
-            {/* <div className="grid h-6 w-6 place-items-center rounded-md bg-slate-950 text-[11px] font-semibold text-white">R</div> */}
-            <div className="truncate text-[13px] font-medium text-slate-700">Robbot — Personal AI powered by DeepSeek Harness</div>
-            {loading ? <div className="status-pulse text-[12px] text-slate-400">Starting DSH...</div> : null}
-          </div>
-          <div className="flex items-center gap-1">
-            <button className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100" title="Reload DSH" onClick={() => void loadDsh()}>
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            <button className="relative grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100" title="Settings" onClick={() => setSettingsOpen(true)}>
-              <Settings className="h-4 w-4" />
-              {desktopUpdate.hasUpdate ? (
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-rose-500" />
-              ) : null}
-            </button>
-            <button className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100" title={account?.email ?? user.email ?? 'Sign out'} onClick={() => void logout()}>
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </header>
-        <section className="relative min-h-0 bg-[#f7f8fa]">
-          {pluginDiagnostics ? (
-            <PluginConflictResolver
-              diagnostics={pluginDiagnostics}
-              busy={loading}
-              onApply={(owners) => { void applyPluginResolution(owners) }}
-              onCancel={() => setPluginDiagnostics(null)}
-            />
-          ) : dshTarget ? (
-            <webview
-              ref={(node) => {
-                webviewRef.current = node as DshWebviewElement | null
-                node?.setAttribute('allowpopups', 'true')
-              }}
-              key={`${dshTarget.partition}:${dshTarget.fingerprint}:${viewNonce}`}
-              title="DSH Desktop"
-              src={dshTarget.url}
-              partition={dshTarget.partition}
-              className="h-full w-full border-0 bg-white"
-              webpreferences="contextIsolation=yes,nodeIntegration=no"
-            />
-          ) : loading ? (
-            <DshLoading />
-          ) : (
-            <div className="grid h-full place-items-center p-6">
-              <div className="max-w-md rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-                <div className="font-medium text-slate-950">DSH Desktop is not ready</div>
-                {error ? <pre className="mt-3 whitespace-pre-wrap rounded-md bg-rose-50 p-3 font-sans text-[13px] text-rose-700">{error}</pre> : null}
-                <div className="mt-4 flex gap-2">
-                  <button className="rounded-md bg-slate-900 px-3 py-2 text-[13px] font-medium text-white" onClick={() => void loadDsh()}>Retry</button>
-                  <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={() => setSettingsOpen(true)}>Settings</button>
-                </div>
+    <main className="grid h-full min-h-0 grid-rows-[44px_minmax(0,1fr)] overflow-hidden bg-white">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {/* <div className="grid h-6 w-6 place-items-center rounded-md bg-slate-950 text-[11px] font-semibold text-white">R</div> */}
+          <div className="truncate text-[13px] font-medium text-slate-700">Robbot — Personal AI powered by DeepSeek Harness</div>
+          {loading ? <div className="status-pulse text-[12px] text-slate-400">Starting DSH...</div> : null}
+        </div>
+        <div className="flex items-center gap-0.5">
+          <button className="flex h-8 items-center rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Runtime Plugins" onClick={() => openSettings(1)}>
+            <Plug className="h-4 w-4" />
+            <span>功能</span>
+          </button>
+          <button className="relative flex h-8 items-center gap-x-0.5 rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Settings" onClick={() => openSettings(0)}>
+            <Settings className="h-4 w-4" />
+            <span>设置</span>
+            {desktopUpdate.hasUpdate ? (
+              <span className="absolute right-[2px] top-1.5 h-2 w-2 rounded-full bg-rose-500" />
+            ) : null}
+          </button>
+          <button className="flex h-8 items-center rounded-md px-2 text-[13px] text-slate-500 hover:bg-slate-100" title="Reload DSH" onClick={() => void loadDsh()}>
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          <button className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100" title={account?.email ?? user.email ?? 'Sign out'} onClick={() => void logout()}>
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+      <section className="relative min-h-0 bg-[#f7f8fa]">
+        {pluginDiagnostics ? (
+          <PluginConflictResolver
+            diagnostics={pluginDiagnostics}
+            busy={loading}
+            onApply={(owners) => { void applyPluginResolution(owners) }}
+            onCancel={() => setPluginDiagnostics(null)}
+          />
+        ) : dshTarget ? (
+          <webview
+            ref={(node) => {
+              webviewRef.current = node as DshWebviewElement | null
+              node?.setAttribute('allowpopups', 'true')
+            }}
+            key={`${dshTarget.partition}:${dshTarget.fingerprint}:${viewNonce}`}
+            title="DSH Desktop"
+            src={dshTarget.url}
+            partition={dshTarget.partition}
+            className="h-full w-full border-0 bg-white"
+            webpreferences="contextIsolation=yes,nodeIntegration=no"
+          />
+        ) : loading ? (
+          <DshLoading />
+        ) : (
+          <div className="grid h-full place-items-center p-6">
+            <div className="max-w-md rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+              <div className="font-medium text-slate-950">DSH Desktop is not ready</div>
+              {error ? <pre className="mt-3 whitespace-pre-wrap rounded-md bg-rose-50 p-3 font-sans text-[13px] text-rose-700">{error}</pre> : null}
+              <div className="mt-4 flex gap-2">
+                <button className="rounded-md bg-slate-900 px-3 py-2 text-[13px] font-medium text-white" onClick={() => void loadDsh()}>Retry</button>
+                <button className="rounded-md border border-slate-200 px-3 py-2 text-[13px] text-slate-700" onClick={() => openSettings()}>Settings</button>
               </div>
             </div>
-          )}
-          {settingsOpen ? (
-            <div className="absolute inset-0 z-10">
-              <SettingsModal
-                key="settings-page"
-                open
-                variant="page"
-                email={account?.email ?? user.email ?? ''}
-                deepseek={account?.deepseek ?? null}
-                openai={account?.openai ?? null}
-                selectedAi={account?.selectedAi ?? null}
-                appVersion={desktopUpdate.appVersion}
-                updateCheck={desktopUpdate.updateCheck}
-                onCheckUpdate={desktopUpdate.checkUpdate}
-                onClose={() => setSettingsOpen(false)}
-                onSave={saveSettings}
-                onSelect={selectAi}
-                onRuntimePluginsChanged={loadDsh}
-                onLogout={() => { setSettingsOpen(false); void logout() }}
-              />
-            </div>
-          ) : null}
-        </section>
-      </main>
-    </>
+          </div>
+        )}
+        {settingsOpen ? (
+          <div className="absolute inset-0 z-10">
+            <SettingsModal
+              key="settings-page"
+              open
+              variant="page"
+              initialTab={settingsInitialTab}
+              email={account?.email ?? user.email ?? ''}
+              deepseek={account?.deepseek ?? null}
+              openai={account?.openai ?? null}
+              selectedAi={account?.selectedAi ?? null}
+              appVersion={desktopUpdate.appVersion}
+              updateCheck={desktopUpdate.updateCheck}
+              onCheckUpdate={desktopUpdate.checkUpdate}
+              onClose={() => setSettingsOpen(false)}
+              onSave={saveSettings}
+              onSelect={selectAi}
+              onRuntimePluginsChanged={loadDsh}
+              onLogout={() => { setSettingsOpen(false); void logout() }}
+            />
+          </div>
+        ) : null}
+      </section>
+    </main>
   )
 }
 
@@ -320,13 +332,14 @@ function PluginConflictResolver(props: {
   onCancel: () => void;
 }) {
   const conflicts = props.diagnostics.filter(isSingleSlotConflict)
-  const [owners, setOwners] = useState<Record<string, string>>(() =>
-    Object.fromEntries(conflicts.map((conflict) => [conflict.slot, conflict.plugins[0]?.name ?? ''])),
-  )
-
-  useEffect(() => {
-    setOwners(Object.fromEntries(conflicts.map((conflict) => [conflict.slot, conflict.plugins[0]?.name ?? ''])))
-  }, [props.diagnostics])
+  const [selectedOwners, setSelectedOwners] = useState<Record<string, string>>({})
+  const owners = Object.fromEntries(conflicts.map((conflict) => {
+    const selectedOwner = selectedOwners[conflict.slot]
+    const owner = conflict.plugins.some((plugin) => plugin.name === selectedOwner)
+      ? selectedOwner
+      : conflict.plugins[0]?.name ?? ''
+    return [conflict.slot, owner]
+  }))
 
   if (conflicts.length === 0) {
     return (
@@ -362,7 +375,7 @@ function PluginConflictResolver(props: {
                       type="radio"
                       name={`runtime-plugin-owner-${conflict.slot}`}
                       checked={owners[conflict.slot] === plugin.name}
-                      onChange={() => setOwners((value) => ({ ...value, [conflict.slot]: plugin.name }))}
+                      onChange={() => setSelectedOwners((value) => ({ ...value, [conflict.slot]: plugin.name }))}
                     />
                     <span className="text-[13px] text-slate-800">{plugin.displayName ?? plugin.name}</span>
                     {plugin.displayName ? <span className="text-[12px] text-slate-400">{plugin.name}</span> : null}

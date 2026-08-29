@@ -18,7 +18,7 @@ type ExclusivePluginGroup = {
   plugins: Array<{ name: string; displayName?: string }>
 }
 
-const NO_EXCLUSIVE_OWNER = '__none__'
+// const NO_EXCLUSIVE_OWNER = '__none__'
 
 export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
   const [pluginSettings, setPluginSettings] = useState<RuntimePluginSettingsResult | null>(null)
@@ -90,10 +90,10 @@ export function RuntimePluginsPanel(props: RuntimePluginsPanelProps) {
 
   async function afterPluginChange(next: RuntimePluginSettingsResult, successMessage: string) {
     if (!next.resolution.ok) {
-      toast.warning(`${successMessage}，但当前插件配置仍有冲突`)
+      toast.warning(`${successMessage}，但当前插件配置仍有冲突`, { duration: 1000 })
       return
     }
-    toast.success(`${successMessage}，正在重新加载 HARNESS`)
+    toast.success(`${successMessage}，正在重新加载 HARNESS`, { duration: 1000 })
     await props.onRuntimePluginsChanged?.()
   }
 
