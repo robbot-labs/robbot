@@ -66,7 +66,7 @@ jobs:
 
       - name: Build DSH runtime
         if: matrix.os == 'windows-2022'
-        run: pnpm run dsh:build
+        run: pnpm run dsh:setup
 
       - name: Prepare app node_modules for Forge
         shell: bash
