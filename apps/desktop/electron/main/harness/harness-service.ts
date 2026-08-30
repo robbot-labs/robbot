@@ -104,6 +104,7 @@ export class HarnessService {
     }
 
     fs.writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, plugins: nextPlugins }, null, 2)}\n`);
+    await this.resetRuntimeForPluginChange();
     return this.getRuntimePlugins();
   }
 
@@ -144,6 +145,7 @@ export class HarnessService {
       return name && pluginsToDisable.has(name) ? { ...plugin, enabled: false } : plugin;
     });
     fs.writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, plugins: nextPlugins }, null, 2)}\n`);
+    await this.resetRuntimeForPluginChange();
     return resolveRuntimePluginPlanForRuntime(runtimeRoot);
   }
 
@@ -229,6 +231,14 @@ export class HarnessService {
     await this.harness.dispose();
     this.dshSessions.clear();
     this.runs.clear();
+  }
+
+  private async resetRuntimeForPluginChange(): Promise<void> {
+    this.generation += 1;
+    await this.harness.dispose();
+    this.dshSessions.clear();
+    this.runs.clear();
+    this.runBySession.clear();
   }
 
   private async startRun(accountId: string, workspaceId: string, robbotSessionId: string, workspacePath: string, prompt: string, userMessageId: string, requestedMode?: HarnessRunMode): Promise<HarnessRunStartResult> {
