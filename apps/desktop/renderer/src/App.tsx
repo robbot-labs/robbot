@@ -150,6 +150,23 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
     await loadDsh()
   }
 
+  const restartDshAfterRuntimePluginChange = async () => {
+    setDshTarget(null)
+    setViewNonce((value) => value + 1)
+    setLoading(true)
+    setError('')
+    setPluginDiagnostics(null)
+    try {
+      await window.robbot.harness.restartRuntimeForPluginChange()
+      await loadDsh()
+    } catch (cause) {
+      setDshTarget(null)
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const openSettings = (initialTab = 0) => {
     setSettingsInitialTab(initialTab)
     setSettingsOpen(true)
@@ -259,7 +276,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
         return
       }
       setPluginDiagnostics(null)
-      await loadDsh()
+      await restartDshAfterRuntimePluginChange()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
@@ -381,7 +398,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
               onClose={() => setSettingsOpen(false)}
               onSave={saveSettings}
               onSelect={selectAi}
-              onRuntimePluginsChanged={loadDsh}
+              onRuntimePluginsChanged={restartDshAfterRuntimePluginChange}
               onLogout={() => { setSettingsOpen(false); void logout() }}
             />
           </div>

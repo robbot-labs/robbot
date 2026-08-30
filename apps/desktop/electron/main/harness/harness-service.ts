@@ -104,7 +104,6 @@ export class HarnessService {
     }
 
     fs.writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, plugins: nextPlugins }, null, 2)}\n`);
-    await this.resetRuntimeForPluginChange();
     return this.getRuntimePlugins();
   }
 
@@ -145,8 +144,11 @@ export class HarnessService {
       return name && pluginsToDisable.has(name) ? { ...plugin, enabled: false } : plugin;
     });
     fs.writeFileSync(manifestPath, `${JSON.stringify({ ...manifest, plugins: nextPlugins }, null, 2)}\n`);
-    await this.resetRuntimeForPluginChange();
     return resolveRuntimePluginPlanForRuntime(runtimeRoot);
+  }
+
+  async restartRuntimeForPluginChange(): Promise<void> {
+    await this.resetRuntimeForPluginChange();
   }
 
   async warmup(input: HarnessWarmupInput): Promise<void> {

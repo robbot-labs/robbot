@@ -362,6 +362,7 @@ export interface RobbotApi {
     setRuntimePluginEnabled: (input: { name: string; enabled: boolean }) => Promise<RuntimePluginSettingsResult>;
     setRuntimePluginsEnabled: (input: { updates: Array<{ name: string; enabled: boolean }> }) => Promise<RuntimePluginSettingsResult>;
     applyRuntimePluginResolution: (input: { owners: Record<string, string> }) => Promise<RuntimePluginPlanResult>;
+    restartRuntimeForPluginChange: () => Promise<void>;
     getCurrentWebUrl: () => Promise<DshWebViewTarget>;
     listActiveRuns: () => Promise<Record<string, ActiveRunRef>>;
     warmupRuntime: (input: HarnessWarmupInput) => Promise<void>;

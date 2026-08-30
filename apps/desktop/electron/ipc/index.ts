@@ -154,6 +154,9 @@ export function registerIpcHandlers(services: RuntimeServices): void {
   ipcMain.handle('harness:apply-runtime-plugin-resolution', (_event, input: { owners: Record<string, string> }) =>
     services.harness.applyRuntimePluginResolution(input),
   );
+  ipcMain.handle('harness:restart-runtime-for-plugin-change', () =>
+    services.harness.restartRuntimeForPluginChange(),
+  );
   ipcMain.handle('harness:get-current-web-url', () => services.harness.getWebUrlForAccount(services.auth.requireCurrentUser().id));
   ipcMain.handle('harness:list-active-runs', () => services.harness.getActiveRuns());
   ipcMain.handle('harness:warmup-runtime', (_event, input: HarnessWarmupInput) => services.harness.warmup({ ...input, accountId: requireCurrentAccountId(services, input.accountId) }));
