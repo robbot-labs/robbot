@@ -3,9 +3,9 @@ packages:
   - "packages/*"
   - "tests/*"
 
-onlyBuiltDependencies:
-  - electron-winstaller
-  - esbuild
-  - better-sqlite3
-  - electron-winstaller
-  - esbuild
+nodeLinker: hoisted
+
+allowBuilds:
+  better-sqlite3: true
+  electron-winstaller: true
+  esbuild: true
