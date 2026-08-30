@@ -12,7 +12,7 @@ Robbot 有自己的账号体系、SQLite 本地存储、AI 配置、插件依赖
 
 | 平台 | 下载 | 安装方式 |
 | --- | --- | --- |
-| Windows x64 | [下载 exe](https://github.com/robbot-labs/robbot/releases/download/v1.0.0/Robbot-windows-x64-v1.0.1.zip) | 解压后安装 Robbot |
+| Windows x64 | [下载 exe](https://github.com/robbot-labs/robbot/releases/download/v1.0.0/Robbot-windows-x64.zip) | 解压后安装 Robbot |
 
 | macOS arm64 | [下载 ZIP](https://github.com/robbot-labs/robbot/releases/download/v1.0.0/Robbot-darwin-arm64-1.0.1.zip) | 解压后安装 Robbot
 
