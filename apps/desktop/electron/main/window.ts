@@ -14,8 +14,16 @@ function getRendererHtmlPath(): string {
   return path.join(app.getAppPath(), 'renderer/dist/index.html');
 }
 
-function getIconPath(): string {
+export function getAppIconPath(): string {
   return path.join(app.getAppPath(), 'assets/icon.png');
+}
+
+export function getTrayIconPath(): string {
+  if (process.platform === 'win32') {
+    return path.join(app.getAppPath(), 'assets/icon.ico');
+  }
+
+  return getAppIconPath();
 }
 
 export function getPreloadPathForWindow(): string {
@@ -29,7 +37,7 @@ function getWindowArguments(kind: RobbotWindowKind): string[] {
 }
 
 export async function createMainWindow(): Promise<BrowserWindow> {
-  const iconPath = getIconPath();
+  const iconPath = getAppIconPath();
 
   if (process.platform === 'darwin') {
     app.dock?.setIcon(iconPath);
@@ -72,7 +80,7 @@ export async function createLoginWindow(): Promise<BrowserWindow> {
     width: 1180,
     height: 780,
     show: false,
-    icon: getIconPath(),
+    icon: getAppIconPath(),
     autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: {
       preload: getPreloadPath(),

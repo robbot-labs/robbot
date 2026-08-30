@@ -3,6 +3,7 @@ import squirrelStartup from 'electron-squirrel-startup';
 
 import { registerIpcHandlers } from '../ipc';
 import { initializeRuntime } from '../runtime';
+import { createAppTray, isAppQuitting, markAppQuitting } from './tray';
 import { createLoginWindow, createMainWindow } from './window';
 
 if (squirrelStartup) {
@@ -17,27 +18,62 @@ async function bootstrap(): Promise<void> {
   registerIpcHandlers(services);
 
   app.on('before-quit', () => {
+    markAppQuitting();
     void services.dispose();
   });
 
+  const showMainWindow = async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      mainWindow = await createMainWindow();
+      mainWindow.on('close', (event) => {
+        if (isAppQuitting()) return;
+
+        event.preventDefault();
+        mainWindow?.hide();
+      });
+      mainWindow.on('closed', () => { mainWindow = null; });
+    }
+
+    if (process.platform === 'darwin') {
+      app.dock?.show();
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
+  const showLoginWindow = async () => {
+    if (!loginWindow || loginWindow.isDestroyed()) {
+      loginWindow = await createLoginWindow();
+      loginWindow.on('closed', () => { loginWindow = null; });
+    }
+
+    if (loginWindow.isMinimized()) {
+      loginWindow.restore();
+    }
+    loginWindow.show();
+    loginWindow.focus();
+  };
+
   const showStartupWindow = async () => {
     if (services.auth.getCurrentUser()) {
-      mainWindow = await createMainWindow();
-      mainWindow.on('closed', () => { mainWindow = null; });
+      await showMainWindow();
       return;
     }
 
-    loginWindow = await createLoginWindow();
-    loginWindow.on('closed', () => { loginWindow = null; });
+    await showLoginWindow();
   };
+
+  createAppTray({ onShowWindow: showStartupWindow });
 
   await showStartupWindow();
 
   ipcMain.on('robbot:show-main-window', async (event) => {
     if (event.sender !== loginWindow?.webContents) return;
     const oldLoginWindow = loginWindow;
-    mainWindow = await createMainWindow();
-    mainWindow.on('closed', () => { mainWindow = null; });
+    await showMainWindow();
     oldLoginWindow?.close();
     loginWindow = null;
   });
@@ -48,8 +84,7 @@ async function bootstrap(): Promise<void> {
     const oldMainWindow = mainWindow;
     oldMainWindow.hide();
     mainWindow = null;
-    loginWindow = await createLoginWindow();
-    loginWindow.on('closed', () => { loginWindow = null; });
+    await showLoginWindow();
     oldMainWindow.destroy();
   });
 
@@ -68,15 +103,12 @@ async function bootstrap(): Promise<void> {
       });
     }
 
-    loginWindow = await createLoginWindow();
-    loginWindow.on('closed', () => { loginWindow = null; });
+    await showLoginWindow();
     oldMainWindow.destroy();
   });
 
   app.on('activate', async () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      await showStartupWindow();
-    }
+    await showStartupWindow();
   });
 }
 
