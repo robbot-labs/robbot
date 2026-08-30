@@ -2,7 +2,7 @@
   "plugins": [
     {
       "name": "dsh-article-creator",
-      "enabled": true,
+      "enabled": false,
       "source": "dsh-native"
     },
     {
@@ -12,12 +12,12 @@
     },
     {
       "name": "dsh-plugin-base",
-      "enabled": false,
+      "enabled": true,
       "source": "dsh-native"
     },
     {
       "name": "dsh-plugin-noui",
-      "enabled": false,
+      "enabled": true,
       "source": "dsh-native"
     },
     {

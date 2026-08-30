@@ -51,8 +51,17 @@ div[class*="headline"]:has(> span[class*="headlineText"], > span[class*="preview
 }
 `
 
+const DSH_BRAND_CSS_EVENTS = [
+  'dom-ready',
+  'did-finish-load',
+  'did-navigate',
+  'did-navigate-in-page',
+] as const
+
+const DSH_BRAND_STYLE_ID = 'robbot-dsh-brand-override'
+
 type DshWebviewElement = HTMLElement & {
-  insertCSS: (css: string) => Promise<string>;
+  executeJavaScript: (code: string) => Promise<unknown>;
 }
 
 function App() {
@@ -186,14 +195,40 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
     if (webview === null || dshTarget === null || settingsOpen) return
 
     const injectBrandCss = () => {
-      void webview.insertCSS(DSH_BRAND_CSS).catch((cause) => {
+      const script = `
+        (() => {
+          const styleId = ${JSON.stringify(DSH_BRAND_STYLE_ID)};
+          const css = ${JSON.stringify(DSH_BRAND_CSS)};
+          let style = document.getElementById(styleId);
+          if (!style) {
+            style = document.createElement('style');
+            style.id = styleId;
+            document.head.appendChild(style);
+          }
+          if (style.textContent !== css) {
+            style.textContent = css;
+          }
+        })();
+      `
+      try {
+        void webview.executeJavaScript(script).catch((cause) => {
+          console.warn('Failed to apply DSH brand override:', cause)
+        })
+      } catch (cause) {
         console.warn('Failed to apply DSH brand override:', cause)
-      })
+      }
     }
 
-    webview.addEventListener('dom-ready', injectBrandCss)
+    injectBrandCss()
+    const retryTimers = [150, 500, 1200].map((delay) => window.setTimeout(injectBrandCss, delay))
+    DSH_BRAND_CSS_EVENTS.forEach((eventName) => {
+      webview.addEventListener(eventName, injectBrandCss)
+    })
     return () => {
-      webview.removeEventListener('dom-ready', injectBrandCss)
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
+      DSH_BRAND_CSS_EVENTS.forEach((eventName) => {
+        webview.removeEventListener(eventName, injectBrandCss)
+      })
     }
   }, [dshTarget, settingsOpen, viewNonce])
 
