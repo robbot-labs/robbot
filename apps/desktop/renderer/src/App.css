@@ -9,6 +9,15 @@
 
 .plugin-button-icon { animation: plugin-attention 2.8s ease-in-out infinite; }
 
+.robbot-titlebar {
+  -webkit-app-region: drag;
+}
+
+.robbot-titlebar-actions,
+.robbot-titlebar button {
+  -webkit-app-region: no-drag;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .plugin-button-icon { animation: none; }
 }

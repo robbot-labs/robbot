@@ -269,13 +269,13 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
 
   return (
     <main className="grid h-full min-h-0 grid-rows-[36px_minmax(0,1fr)] overflow-hidden bg-white">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-2.5">
+      <header className={`robbot-titlebar flex items-center justify-between border-b border-slate-200 bg-white px-2.5 ${window.robbot.app.platform === 'darwin' ? 'pl-[86px]' : ''}`}>
         <div className="flex min-w-0 items-center gap-2">
           {/* <div className="grid h-6 w-6 place-items-center rounded-md bg-slate-950 text-[11px] font-semibold text-white">R</div> */}
           <div className="truncate bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500 bg-clip-text text-[13px] font-semibold text-transparent">{t('app.title')}</div>
           {loading ? <div className="status-pulse text-[12px] text-slate-400">{t('app.startingDsh')}</div> : null}
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="robbot-titlebar-actions flex items-center gap-0.5">
           <button className="group flex h-7 cursor-pointer items-center gap-1 rounded-md bg-indigo-50 px-2 text-[12px] font-medium text-indigo-700 transition-colors hover:bg-indigo-100 hover:text-indigo-800" title={t('app.runtimePlugins')} onClick={() => openSettings(1)}>
             <Plug className="plugin-button-icon h-3.5 w-3.5 transition-transform group-hover:rotate-12" />
             <span>{t('app.pluginsButton')}</span>

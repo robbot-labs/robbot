@@ -47,6 +47,8 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     width: 1180,
     height: 780,
     icon: iconPath,
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: process.platform === 'darwin' ? { x: 18, y: 12 } : undefined,
     autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: {
       preload: getPreloadPath(),
