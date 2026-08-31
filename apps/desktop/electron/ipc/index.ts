@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, session, shell, type OpenDialogOptions } from 'electron';
 import path from 'node:path';
 
 import type { RuntimeServices } from '../runtime';
@@ -157,7 +157,10 @@ export function registerIpcHandlers(services: RuntimeServices): void {
   ipcMain.handle('harness:restart-runtime-for-plugin-change', () =>
     services.harness.restartRuntimeForPluginChange(),
   );
-  ipcMain.handle('harness:get-current-web-url', () => services.harness.getWebUrlForAccount(services.auth.requireCurrentUser().id));
+  ipcMain.handle('harness:get-current-web-url', async () => {
+    const target = await services.harness.getWebUrlForAccount(services.auth.requireCurrentUser().id);
+    return prepareDshWebviewTarget(target);
+  });
   ipcMain.handle('harness:list-active-runs', () => services.harness.getActiveRuns());
   ipcMain.handle('harness:warmup-runtime', (_event, input: HarnessWarmupInput) => services.harness.warmup({ ...input, accountId: requireCurrentAccountId(services, input.accountId) }));
   ipcMain.handle('harness:run-prompt', (_event, input: HarnessRunInput) => services.harness.runPrompt({ ...input, accountId: requireCurrentAccountId(services, input.accountId) }));
@@ -172,6 +175,40 @@ export function registerIpcHandlers(services: RuntimeServices): void {
       return services.harness.approve(sessionId, { approvalId, approved });
     },
   );
+}
+
+async function prepareDshWebviewTarget<T extends { url: string; partition: string }>(target: T): Promise<T> {
+  const launchUrl = new URL(target.url);
+  if (launchUrl.protocol !== 'http:' || launchUrl.hostname !== '127.0.0.1') {
+    throw new Error(`Refusing to authenticate an unexpected DSH web URL: ${launchUrl.origin}`);
+  }
+
+  const webviewSession = session.fromPartition(target.partition);
+  const cleanUrl = new URL('/', launchUrl.origin);
+  const staleCookies = await webviewSession.cookies.get({ domain: launchUrl.hostname });
+  await Promise.all(staleCookies.map((cookie) =>
+    webviewSession.cookies.remove(cleanUrl.toString(), cookie.name),
+  ));
+
+  const response = await webviewSession.fetch(launchUrl.toString(), {
+    method: 'GET',
+    redirect: 'follow',
+    credentials: 'include',
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text()).trim();
+    throw new Error(`DSH web authentication failed with HTTP ${String(response.status)}${detail ? `: ${detail}` : ''}`);
+  }
+  await response.arrayBuffer();
+
+  const cookies = await webviewSession.cookies.get({ url: cleanUrl.toString() });
+  if (cookies.length === 0) {
+    throw new Error('DSH web authentication did not create a cookie in the Electron webview session.');
+  }
+
+  return { ...target, url: cleanUrl.toString() };
 }
 
 function broadcast(channel: string, payload: unknown): void {

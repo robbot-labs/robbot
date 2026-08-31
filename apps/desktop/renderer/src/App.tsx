@@ -236,14 +236,20 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
       }
     }
 
-    injectBrandCss()
-    const retryTimers = [150, 500, 1200].map((delay) => window.setTimeout(injectBrandCss, delay))
-    DSH_BRAND_CSS_EVENTS.forEach((eventName) => {
+    let retryTimers: number[] = []
+    const onDomReady = () => {
+      injectBrandCss()
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
+      retryTimers = [150, 500, 1200].map((delay) => window.setTimeout(injectBrandCss, delay))
+    }
+    webview.addEventListener('dom-ready', onDomReady)
+    DSH_BRAND_CSS_EVENTS.filter((eventName) => eventName !== 'dom-ready').forEach((eventName) => {
       webview.addEventListener(eventName, injectBrandCss)
     })
     return () => {
       retryTimers.forEach((timer) => window.clearTimeout(timer))
-      DSH_BRAND_CSS_EVENTS.forEach((eventName) => {
+      webview.removeEventListener('dom-ready', onDomReady)
+      DSH_BRAND_CSS_EVENTS.filter((eventName) => eventName !== 'dom-ready').forEach((eventName) => {
         webview.removeEventListener(eventName, injectBrandCss)
       })
     }
