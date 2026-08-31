@@ -551,6 +551,26 @@ function sanitizePackagedDshHomeTemplate() {
   console.log(`[robbot:package] removed template DSH profile node_modules at ${profileNodeModulesPath}`);
 }
 
+function cleanCurrentMakeStaging() {
+  const makeRoot = path.join(__dirname, 'out', 'make');
+  const targets = [
+    path.join(makeRoot, 'zip', process.platform, process.arch),
+  ];
+
+  if (process.platform === 'win32') {
+    targets.push(path.join(makeRoot, 'squirrel.windows', process.arch));
+  }
+
+  for (const targetPath of targets) {
+    if (!fsSync.existsSync(targetPath)) {
+      continue;
+    }
+
+    fsSync.rmSync(targetPath, { force: true, recursive: true });
+    console.log(`[robbot:package] removed stale make staging at ${targetPath}`);
+  }
+}
+
 module.exports = {
   hooks: {
     async prePackage() {
@@ -575,6 +595,7 @@ module.exports = {
       logArtifactSizeAudit(makeResults);
     },
     async preMake() {
+      cleanCurrentMakeStaging();
       if (process.platform === 'win32') {
         prepareElectronWinstallerVendor();
       }
