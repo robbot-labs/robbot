@@ -13,12 +13,17 @@ export type HarnessErrorCode =
   | 'unknown';
 
 export class HarnessError extends Error {
+  readonly code: HarnessErrorCode;
+  readonly cause?: unknown;
+
   constructor(
     message: string,
-    readonly code: HarnessErrorCode = 'unknown',
-    readonly cause?: unknown,
+    code: HarnessErrorCode = 'unknown',
+    cause?: unknown,
   ) {
     super(message);
     this.name = 'HarnessError';
+    this.code = code;
+    this.cause = cause;
   }
 }
