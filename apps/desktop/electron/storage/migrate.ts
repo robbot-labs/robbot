@@ -137,6 +137,14 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE accounts ADD COLUMN saved_password_updated_at INTEGER;
     `,
   },
+  {
+    id: '0010_account_volcengine_config',
+    sql: `ALTER TABLE accounts ADD COLUMN volcengine TEXT;`,
+  },
+  {
+    id: '0011_account_custom_openai_config',
+    sql: `ALTER TABLE accounts ADD COLUMN custom_openai TEXT;`,
+  },
 ];
 
 export function migrateDatabase(sqlite: BetterSqlite3.Database): void {

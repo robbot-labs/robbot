@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { AiField } from '@robbot/core';
 
 const windowKind = process.argv
   .find((arg) => arg.startsWith('--robbot-window-kind='))
@@ -33,11 +34,11 @@ contextBridge.exposeInMainWorld('robbot', {
   },
   account: {
     getCurrent: () => ipcRenderer.invoke('account:get-current'),
-    updateAiConfig: (field: 'deepseek' | 'openai', value: unknown) =>
+    updateAiConfig: (field: AiField, value: unknown) =>
       ipcRenderer.invoke('account:update-ai-config', field, value),
-    saveAndSelectAi: (field: 'deepseek' | 'openai', value: unknown) =>
+    saveAndSelectAi: (field: AiField, value: unknown) =>
       ipcRenderer.invoke('account:save-and-select-ai', field, value),
-    selectAi: (selectedAi: 'deepseek' | 'openai' | null) =>
+    selectAi: (selectedAi: AiField | null) =>
       ipcRenderer.invoke('account:select-ai', selectedAi),
     resetHarness: () => ipcRenderer.invoke('account:reset-harness'),
   },

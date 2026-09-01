@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Box, Tab, Tabs } from '@mui/material'
+import type { AiField } from '@robbot/core'
 import { ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -8,7 +9,7 @@ import type { UpdateCheckState } from '../../../hooks/useDesktopUpdateCheck'
 import { AccountSettingsPanel } from './AccountSettingsPanel'
 import { readAiConfigKey } from './aiConfig'
 import { LanguageSettingsPanel } from './LanguageSettingsPanel'
-import { type AiField, ModelSettingsPanel } from './ModelSettingsPanel'
+import { ModelSettingsPanel } from './ModelSettingsPanel'
 import { RuntimePluginsPanel } from './RuntimePluginsPanel'
 import { VersionSettingsPanel } from './VersionSettingsPanel'
 
@@ -19,6 +20,8 @@ type SettingsModalProps = {
   email: string
   deepseek: string | null
   openai: string | null
+  volcengine: string | null
+  customOpenai: string | null
   selectedAi: string | null
   appVersion: string
   updateCheck: UpdateCheckState
@@ -58,7 +61,7 @@ export function SettingsModal(props: SettingsModalProps) {
   if (!props.open) return null
 
   const close = () => {
-    const selectedKey = props.selectedAi === 'deepseek' || props.selectedAi === 'openai'
+    const selectedKey = props.selectedAi === 'deepseek' || props.selectedAi === 'openai' || props.selectedAi === 'volcengine' || props.selectedAi === 'customOpenai'
       ? readAiConfigKey(props[props.selectedAi]).trim()
       : ''
 
@@ -149,6 +152,8 @@ export function SettingsModal(props: SettingsModalProps) {
           <ModelSettingsPanel
             deepseek={props.deepseek}
             openai={props.openai}
+            volcengine={props.volcengine}
+            customOpenai={props.customOpenai}
             selectedAi={props.selectedAi}
             onSave={props.onSave}
             onSelect={props.onSelect}

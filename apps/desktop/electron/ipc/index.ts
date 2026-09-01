@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, session, shell, type OpenDialogOptions } from 'electron';
+import type { AiField } from '@robbot/core';
 import path from 'node:path';
 
 import type { RuntimeServices } from '../runtime';
@@ -70,18 +71,18 @@ export function registerIpcHandlers(services: RuntimeServices): void {
   });
 
   ipcMain.handle('account:get-current', () => sanitizeAccount(services.auth.requireCurrentAccount()));
-  ipcMain.handle('account:update-ai-config', (_event, field: 'deepseek' | 'openai', value: unknown) => {
+  ipcMain.handle('account:update-ai-config', (_event, field: AiField, value: unknown) => {
     const account = services.auth.requireCurrentAccount();
     return sanitizeAccount(services.accounts.updateAiConfig(account.id, field, value));
   });
-  ipcMain.handle('account:save-and-select-ai', async (_event, field: 'deepseek' | 'openai', value: unknown) => {
+  ipcMain.handle('account:save-and-select-ai', async (_event, field: AiField, value: unknown) => {
     const account = services.auth.requireCurrentAccount();
     services.accounts.updateAiConfig(account.id, field, value);
     const selected = services.accounts.selectAi(account.id, field);
     await services.harness.resetForAccount(account.id);
     return sanitizeAccount(selected);
   });
-  ipcMain.handle('account:select-ai', (_event, selectedAi: 'deepseek' | 'openai' | null) => {
+  ipcMain.handle('account:select-ai', (_event, selectedAi: AiField | null) => {
     const account = services.auth.requireCurrentAccount();
     return sanitizeAccount(services.accounts.selectAi(account.id, selectedAi));
   });

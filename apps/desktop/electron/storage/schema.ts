@@ -37,7 +37,23 @@ export const accounts = sqliteTable(
     }
     */
     openai: text('openai'),
-    // openai | deepseek
+    /*
+    {
+      "key": "...",
+      "model": "...",
+      "apiUrl": "..."
+    }
+    */
+    volcengine: text('volcengine'),
+    /*
+    {
+      "key": "...",
+      "model": "...",
+      "apiUrl": "..."
+    }
+    */
+    customOpenai: text('custom_openai'),
+    // openai | deepseek | volcengine | customOpenai
     selectedAi: text('selected_ai'),
   },
   (table) => ({

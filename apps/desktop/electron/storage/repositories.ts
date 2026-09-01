@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import type { AiField } from '@robbot/core';
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 
 import type { DesktopDatabase } from './database';
@@ -27,6 +28,8 @@ export interface AccountRecord {
   metadataJson: string | null;
   deepseek: string | null;
   openai: string | null;
+  volcengine: string | null;
+  customOpenai: string | null;
   selectedAi: string | null;
 }
 
@@ -218,12 +221,12 @@ export class AccountRepository {
       .run();
   }
 
-  updateAiConfig(accountId: string, field: 'deepseek' | 'openai', value: unknown): AccountRecord {
+  updateAiConfig(accountId: string, field: AiField, value: unknown): AccountRecord {
     this.db.update(accounts).set({ [field]: JSON.stringify(value), updatedAt: Date.now() }).where(eq(accounts.id, accountId)).run();
     return this.get(accountId);
   }
 
-  selectAi(accountId: string, selectedAi: 'deepseek' | 'openai' | null): AccountRecord {
+  selectAi(accountId: string, selectedAi: AiField | null): AccountRecord {
     this.db.update(accounts).set({ selectedAi, updatedAt: Date.now() }).where(eq(accounts.id, accountId)).run();
     return this.get(accountId);
   }

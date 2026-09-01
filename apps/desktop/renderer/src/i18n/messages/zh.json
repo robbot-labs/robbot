@@ -46,9 +46,9 @@
     },
     "model": {
       "title": "模型",
-      "description": "API key 会以密码字段保护。新配置将在下一次发送消息时生效；当前正在运行的任务不会受到影响。",
+      "description": "API Key 以加密字段保护，仅保存在本地，不会上传到任何服务端。新配置将在下一次发送消息时生效；当前正在运行的任务不会受到影响。",
       "active": "当前正在使用",
-      "select": "选中",
+      "select": "切换到此模型",
       "selecting": "切换中...",
       "apiKey": "API key",
       "apiKeyPlaceholder": "输入 API key",

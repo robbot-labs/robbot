@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { AiField } from '@robbot/core'
 import { LogOut, Plug, RefreshCw, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { LoginPage } from './components/auth/LoginPage'
@@ -255,7 +256,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
     }
   }, [dshTarget, settingsOpen, viewNonce])
 
-  const saveSettings = async (field: 'deepseek' | 'openai', value: Record<string, unknown>) => {
+  const saveSettings = async (field: AiField, value: Record<string, unknown>) => {
     setDshTarget(null)
     setViewNonce((nonce) => nonce + 1)
     setAccount(await window.robbot.account.saveAndSelectAi(field, value))
@@ -263,7 +264,7 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
     await loadDsh()
   }
 
-  const selectAi = async (field: 'deepseek' | 'openai') => {
+  const selectAi = async (field: AiField) => {
     setDshTarget(null)
     setViewNonce((nonce) => nonce + 1)
     setAccount(await window.robbot.account.selectAi(field))
@@ -397,6 +398,8 @@ function AuthenticatedApp({ user }: { user: AuthUser }) {
               email={account?.email ?? user.email ?? ''}
               deepseek={account?.deepseek ?? null}
               openai={account?.openai ?? null}
+              volcengine={account?.volcengine ?? null}
+              customOpenai={account?.customOpenai ?? null}
               selectedAi={account?.selectedAi ?? null}
               appVersion={desktopUpdate.appVersion}
               updateCheck={desktopUpdate.updateCheck}

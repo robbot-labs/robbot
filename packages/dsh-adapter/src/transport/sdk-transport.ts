@@ -1,4 +1,4 @@
-import type { ApprovalInput, CreateSessionInput, HarnessErrorCode, HarnessEvent, HarnessSession, RunInput } from '@robbot/core';
+import type { AiField, ApprovalInput, CreateSessionInput, HarnessErrorCode, HarnessEvent, HarnessSession, RunInput } from '@robbot/core';
 import { HarnessError } from '@robbot/core';
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -671,7 +671,7 @@ function envValue(dshRoot: string, name: string): string | undefined {
 }
 
 function parseAiRuntime(metadata: Record<string, unknown> | undefined): {
-  provider: 'deepseek' | 'openai';
+  provider: AiField;
   key: string;
   model: string;
   apiUrl?: string;
@@ -689,7 +689,7 @@ function parseAiRuntime(metadata: Record<string, unknown> | undefined): {
   const apiUrl = stringValue(aiRuntime.apiUrl);
   const fingerprint = stringValue(aiRuntime.fingerprint);
   const accountId = stringValue(metadata?.accountId);
-  if ((provider !== 'deepseek' && provider !== 'openai') || !key || !model || !fingerprint) {
+  if ((provider !== 'deepseek' && provider !== 'openai' && provider !== 'volcengine' && provider !== 'customOpenai') || !key || !model || !fingerprint) {
     throw new HarnessError('Invalid aiRuntime metadata for DSH SDK transport.', 'protocol_error');
   }
 

@@ -352,14 +352,19 @@ class AsyncQueue<T> {
 
 function runtimeEnv(metadata?: Record<string, unknown>): Record<string, string | undefined> {
   const ai = metadata?.aiRuntime as Record<string, unknown> | undefined;
+  const isOpenAiCompatible = isOpenAiCompatibleProvider(ai?.provider);
   return {
     DEEPSEEK_API_KEY: ai?.provider === 'deepseek' && typeof ai.key === 'string' ? ai.key : undefined,
-    OPENAI_API_KEY: ai?.provider === 'openai' && typeof ai.key === 'string' ? ai.key : undefined,
+    OPENAI_API_KEY: isOpenAiCompatible && typeof ai?.key === 'string' ? ai.key : undefined,
     DEEPSEEK_BASE_URL: ai?.provider === 'deepseek' && typeof ai.apiUrl === 'string' ? ai.apiUrl : undefined,
-    OPENAI_BASE_URL: ai?.provider === 'openai' && typeof ai.apiUrl === 'string' ? ai.apiUrl : undefined,
-    DSH_PROVIDER: typeof ai?.dshProvider === 'string' ? ai.dshProvider : typeof ai?.provider === 'string' ? (ai.provider === 'openai' ? 'openai' : 'deepseek-official') : undefined,
+    OPENAI_BASE_URL: isOpenAiCompatible && typeof ai?.apiUrl === 'string' ? ai.apiUrl : undefined,
+    DSH_PROVIDER: typeof ai?.dshProvider === 'string' ? ai.dshProvider : typeof ai?.provider === 'string' ? (ai.provider === 'deepseek' ? 'deepseek-official' : 'openai') : undefined,
     DSH_MODEL: typeof ai?.model === 'string' ? ai.model : undefined,
   };
+}
+
+function isOpenAiCompatibleProvider(provider: unknown): boolean {
+  return provider === 'openai' || provider === 'volcengine' || provider === 'customOpenai';
 }
 
 function runtimeFingerprint(metadata: Record<string, unknown> | undefined, dshHome: string | undefined): string {

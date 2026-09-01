@@ -1,4 +1,5 @@
 import type React from 'react';
+import type { AiField } from '@robbot/core';
 
 export interface HarnessRuntimeStatus {
   status: 'missing' | 'not_installed' | 'ready' | 'running';
@@ -220,6 +221,8 @@ export interface AccountRecord {
   metadataJson: string | null;
   deepseek: string | null;
   openai: string | null;
+  volcengine: string | null;
+  customOpenai: string | null;
   selectedAi: string | null;
 }
 
@@ -332,9 +335,9 @@ export interface RobbotApi {
   };
   account: {
     getCurrent: () => Promise<AccountRecord>;
-    updateAiConfig: (field: 'deepseek' | 'openai', value: unknown) => Promise<AccountRecord>;
-    saveAndSelectAi: (field: 'deepseek' | 'openai', value: unknown) => Promise<AccountRecord>;
-    selectAi: (selectedAi: 'deepseek' | 'openai' | null) => Promise<AccountRecord>;
+    updateAiConfig: (field: AiField, value: unknown) => Promise<AccountRecord>;
+    saveAndSelectAi: (field: AiField, value: unknown) => Promise<AccountRecord>;
+    selectAi: (selectedAi: AiField | null) => Promise<AccountRecord>;
     resetHarness: () => Promise<void>;
   };
   workspace: {
